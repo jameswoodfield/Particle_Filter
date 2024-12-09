@@ -1,13 +1,14 @@
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from .base import BaseModel
+from base import BaseModel
+#from models.base import BaseModel
 jax.config.update("jax_enable_x64", True)
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def __init__(self, params):
-        self.params = params
 
+        self.params = params
         self.x = jnp.linspace(0, 1, self.params.nx, endpoint=False)
         self.dx = 1 / self.params.nx
         self.k = jnp.fft.fftfreq(self.params.nx, self.dx)
@@ -75,19 +76,19 @@ def step_ETDRK4(v, E, E_2, Q, f1, f2, f3, g, stochastic_basis, sqrtdt, dW_n):
 # Simulation parameters
 KS_params = {# KS equation. 
     "c_0": 0, "c_1": 1, "c_2": 0.1, "c_3": 0.0, "c_4": 0.001,
-    "nx": 256, "P": 32, "E": 100, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
 }
-Heat_params = {# heat equation. 
+Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 32, "E": 100, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
 }
-Burgers_params={# heat equation. 
+Burgers_params={# Burgers equation. 
     "c_0": 0, "c_1": 1, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 32, "E": 100, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
 }
-KDV_params = {# heat equation. 
+KDV_params = {# KdV equation. 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 0.01, "c_4": 0.0,
-    "nx": 256, "P": 32, "E": 100, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
 }
 
 if __name__ == "__main__":
@@ -104,7 +105,6 @@ if __name__ == "__main__":
     g = -0.5j * k * params["c_1"]
 
     E_weights, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx)
-    print("precomputed weights.")
     nmax = round(tmax / dt)
     uu = jnp.zeros([E, nmax, nx])
     uu = uu.at[:, 0, :].set(u)
