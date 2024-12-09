@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from base import BaseModel
+from .base import BaseModel
 #from models.base import BaseModel
 jax.config.update("jax_enable_x64", True)
 
@@ -17,7 +17,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
         self.nmax = round(self.params.tmax / self.params.dt)
-        self.stochastic_basis = 0.0001*jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * self.x / (p + 1)) for p in range(self.params.P)])
+        self.stochastic_basis = self.params.sigma*jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * self.x / (p + 1)) for p in range(self.params.P)])
 
         self.noise_key = jax.random.PRNGKey(0)
 
@@ -76,19 +76,19 @@ def step_ETDRK4(v, E, E_2, Q, f1, f2, f3, g, stochastic_basis, sqrtdt, dW_n):
 # Simulation parameters
 KS_params = {# KS equation. 
     "c_0": 0, "c_1": 1, "c_2": 0.1, "c_3": 0.0, "c_4": 0.001,
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128, "sigma": 0.01,
 }
 Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128,  "sigma": 0.01,
 }
 Burgers_params={# Burgers equation. 
     "c_0": 0, "c_1": 1, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128,  "sigma": 0.01,
 }
 KDV_params = {# KdV equation. 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 0.01, "c_4": 0.0,
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128
+    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128, "sigma": 0.01,
 }
 
 if __name__ == "__main__":

@@ -1,7 +1,92 @@
 import jax
 import jax.numpy as jnp
 
+# Just a test of a very basic filter
+class ParticleFilter:
 
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.key = jax.random.PRNGKey(seed)
+
+    def advance_signal(self, signal_position):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
+        return signal
+
+    def predict(self, particles):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None)
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        return signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+
+    def update(self, particles, observation, key):
+        log_weights = v_get_log_weight(particles, observation, self.sigma)
+        particles = self.resample(particles, jax.nn.softmax(log_weights), key)
+        return particles
+
+    def resample(self, particles, weights, key):
+        parent_idxs = branching(weights, key)
+        particles = particles[parent_idxs]
+        return particles
+
+    def run_step(self, particles, signal):
+        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
+        signal = self.advance_signal(signal)
+        particles = self.predict(particles)
+        observation = self.observation_from_signal(signal, obs_key)
+
+        particles = self.update(particles, observation, sampling_key)
+        return particles, signal
+
+    def run(self, initial_particles, initial_signal, n_total):
+        def scan_fn(val, i):
+            particles, signal = val
+            particles, signal = self.run_step(particles, signal)
+            return (particles, signal), (particles, signal)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        return final, all
+
+
+class NoFilter:
+
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.key = jax.random.PRNGKey(seed)
+
+    def advance_signal(self, signal_position):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
+        return signal
+
+    def predict(self, particles):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None)
+        return prediction
+
+    def run_step(self, particles, signal):
+        signal = self.advance_signal(signal)
+        particles = self.predict(particles)
+        return particles, signal
+
+    def run(self, initial_particles, initial_signal, n_total):
+        def scan_fn(val, i):
+            particles, signal = val
+            particles, signal = self.run_step(particles, signal)
+            return (particles, signal), (particles, signal)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        return final, all
+
+# Some helper functions that may be useful for the various filters (not all tested, and some may be redundant)
 def find_duplicates(arr):
     unique_elements, _, counts = jnp.unique(arr, return_index=True, return_counts=True)
     duplicates_mask = counts > 1
