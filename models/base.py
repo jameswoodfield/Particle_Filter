@@ -6,6 +6,6 @@ class BaseModel(ABC):
         self.params = params
 
     @abstractmethod
-    def run(self, initial_state, n_steps):
+    def run(self, initial_state, n_steps, noise):
         pass
 
