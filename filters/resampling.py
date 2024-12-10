@@ -42,7 +42,7 @@ def multinomial_resample(particles, weights, key):
     E = len(weights)
     cumulative_sum = jnp.cumsum(weights)
     cumulative_sum = cumulative_sum.at[-1].set(1.)  
-    index = jnp.searchsorted(cumulative_sum, jnp.random.uniform(key, shape=(E,))
+    index = jnp.searchsorted(cumulative_sum, jax.random.uniform(key, shape=(E,)))
 
     return particles[index]
 
