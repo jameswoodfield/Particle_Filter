@@ -33,7 +33,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def run(self, initial_state, n_steps, noise):
         
         if noise is None:
-            self.noise_key, noise_key = jax.random.split(self.noise_key)
+            self.noise_key, noise_key = jax.random.split(self.noise_key, 2)
             noise = self.draw_noise(n_steps, noise_key)
 
         def scan_fn(y, i):

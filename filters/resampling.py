@@ -35,15 +35,16 @@ def register_resampler(name):
 #     return 1. / jnp.sum(weights**2)
 
 @register_resampler('multinomial')
-def multinomial_resample(weights):
+def multinomial_resample(particles, weights, key):
     """
     #https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/12-Particle-Filters.ipynb
     """
     E = len(weights)
     cumulative_sum = jnp.cumsum(weights)
     cumulative_sum = cumulative_sum.at[-1].set(1.)  
-    index = jnp.searchsorted(cumulative_sum, np.random.rand(E))  
-    return index
+    index = jnp.searchsorted(cumulative_sum, jnp.random.uniform(key, shape=(E,))
+
+    return particles[index]
 
 # def systematic_resample(weights):
 #     """The systematic resampling algorithm as implmented in: 
@@ -88,6 +89,7 @@ def default_resampler(particles, weights, key):
     parents = branching(weights, key)
     return particles[parents]
 
+# Helper functions for the default resampler
 @jax.jit
 def branching(weights, key):
     """Perform a branching step"""
@@ -98,7 +100,6 @@ def branching(weights, key):
     parent = reindex(positions, offspring)
 
     return parent
-
 
 @jax.jit
 def compute_offspring(weights, key):
