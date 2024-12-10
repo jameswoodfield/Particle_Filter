@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from .base import BaseModel
+from base import BaseModel
 #from models.base import BaseModel
 jax.config.update("jax_enable_x64", True)
 
@@ -80,19 +80,19 @@ KS_params = {# KS equation.
 }
 Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128,  "sigma": 0.01,
+    "nx": 256, "P": 1, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.01,
 }
 Burgers_params={# Burgers equation. 
     "c_0": 0, "c_1": 1, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128,  "sigma": 0.01,
+    "nx": 256, "P": 1, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.01,
 }
 KDV_params = {# KdV equation. 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 0.01, "c_4": 0.0,
-    "nx": 256, "P": 1, "E": 1, "tmax": 64, "dt": 1 / 128, "sigma": 0.01,
+    "nx": 256, "P": 1, "E": 1, "tmax": 16, "dt": 1 / 128, "sigma": 0.01,
 }
 
 if __name__ == "__main__":
-    params = KS_params
+    params = KDV_params
     nx, P, E, tmax, dt = params["nx"], params["P"], params["E"], params["tmax"], params["dt"]
     dx = 1 / nx
     x = jnp.linspace(0, 1, nx, endpoint=False)

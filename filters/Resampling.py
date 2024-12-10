@@ -55,13 +55,13 @@ def systematic_resample(weights):
     return indexes
 
 def systematic_resample_2(weights):
-    """The systematic resampling algorithm, where"""
+    """The systematic resampling algorithm, where search sorted performs the above, 
+    Currently the np.random.rand"""
     cumulative_sum = jnp.cumsum(weights)
     E = len(weights)
     positions = ( jnp.arange(E) + np.random.rand()*jnp.ones(E) ) / E
     #key, subkey = random.split(key)
-    #positions = 
-
+    #positions = ( jnp.arange(E) + jax.random.uniform()*jnp.ones(E) ) / E
     indexes = jnp.searchsorted(cumulative_sum, positions, side='left')
     return indexes
 
