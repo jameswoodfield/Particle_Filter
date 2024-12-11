@@ -5,7 +5,6 @@ try:
     from .base import BaseModel
 except ImportError:
     from base import BaseModel
-jax.config.update("jax_enable_x64", True)
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def __init__(self, params):
@@ -94,6 +93,8 @@ KDV_params = {# KdV equation.
 }
 
 if __name__ == "__main__":
+    jax.config.update("jax_enable_x64", True)
+
     params = KDV_params
     nx, P, E, tmax, dt = params["nx"], params["P"], params["E"], params["tmax"], params["dt"]
     dx = 1 / nx
