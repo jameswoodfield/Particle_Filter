@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from .base import BaseModel
-#from models.base import BaseModel
+try:
+    from .base import BaseModel
+except ImportError:
+    from base import BaseModel
 jax.config.update("jax_enable_x64", True)
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
