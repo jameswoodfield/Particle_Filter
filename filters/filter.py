@@ -8,10 +8,10 @@ class ParticleFilter:
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default"):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
-        self.n_dim = n_dim
-        self.fwd_model = forward_model
-        self.signal_model = signal_model
-        self.sigma = sigma
+        self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
+        self.fwd_model = forward_model # forward model for the ensemble
+        self.signal_model = signal_model # forward model for the signal
+        self.sigma = sigma # observation error standard deviation
         self.key = jax.random.PRNGKey(seed)
         self.resample = resamplers[resampling]
 
