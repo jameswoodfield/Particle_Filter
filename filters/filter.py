@@ -5,7 +5,7 @@ from .resampling import resamplers
 # Just a test of a very basic filter
 class ParticleFilter:
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default"):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
@@ -14,6 +14,7 @@ class ParticleFilter:
         self.sigma = sigma # observation error standard deviation
         self.key = jax.random.PRNGKey(seed)
         self.resample = resamplers[resampling]
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
     def advance_signal(self, signal_position):
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
@@ -24,10 +25,15 @@ class ParticleFilter:
         return prediction
 
     def observation_from_signal(self, signal, key):
-        return signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
 
     def update(self, particles, observation, key):
-        log_weights = v_get_log_weight(particles, observation, self.sigma)
+        particles_observed = jnp.zeros_like(particles)
+        particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
         particles = self.resample(particles, jax.nn.softmax(log_weights), key)
         return particles
 
@@ -38,13 +44,13 @@ class ParticleFilter:
         observation = self.observation_from_signal(signal, obs_key)
 
         particles = self.update(particles, observation, sampling_key)
-        return particles, signal
+        return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total):
         def scan_fn(val, i):
             particles, signal = val
-            particles, signal = self.run_step(particles, signal)
-            return (particles, signal), (particles, signal)
+            particles, signal, observation = self.run_step(particles, signal)
+            return (particles, signal), (particles, signal, observation)
         
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
         return final, all
