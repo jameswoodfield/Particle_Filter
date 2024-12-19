@@ -1,0 +1,3 @@
+defaults:
+  - model: Korteweg-de-Vries
+  - filter: filter
