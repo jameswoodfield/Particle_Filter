@@ -185,6 +185,30 @@ def step_Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=1/3):
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
+def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
+    """_ Dealiasing using wavenumber cutoff.
+        (Philips, 1959) suggested zeroing, upper half of wavenumbers,
+        (Orzag 1971), instead suggested keeping 2/3rds of the wavenumbers, 
+        This remains specific to the quadratic nonlinearity.
+        One performs dealiasing on the nonlinearity, 
+        then differentiates after in spectral space by multiplication._
+
+    Args:
+        spectral_field (_type_): _spectral field_
+        k (_type_): _wavenumbers_
+        cutoff_ratio (_type_, optional): _Ratio of cuttoff wavenumbers_. Defaults to 2/3.
+
+    Returns:
+        _type_: _dealiased spectral field_
+    """
+    k_magnitude = jnp.abs(k)
+    #max_k = jnp.max(k_magnitude)
+    #cutoff = max_k * cutoff_ratio
+    #mask = k_magnitude <= cutoff
+    #spectral_field = spectral_field * mask
+    spectral_field = jnp.where(k_magnitude < cutoff_ratio * jnp.amax(k_magnitude), spectral_field, 0)
+    return spectral_field
+
 
 
 def Muscl_Limiter(r):
