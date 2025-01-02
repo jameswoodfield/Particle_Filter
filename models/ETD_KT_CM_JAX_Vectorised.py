@@ -29,13 +29,26 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
+    def validate_params(self):
+        if self.params.method not in ['SS_ETDRK4_SSP33', 'ETDRK4']:
+            raise ValueError(f"Method {self.params.method} not recognised")
+        if self.params.method == 'SS_ETDRK4_SSP33':
+            if self.params.P == 0 or self.params.S == 0:
+                raise ValueError(f"Method {self.params.method} requires P and S to be greater than 0")
+        if self.params.method == 'ETDRK4':
+            if self.params.P != 0 or self.params.S != 0:
+                raise ValueError(f"Method {self.params.method} requires P and S to be 0")
+        if self.params.E < 1:
+            raise ValueError(f"Number of ensemble members E must be greater than or equal to 1")
+        pass
+
 
     def draw_noise(self, n_steps, key1, key2):
         dW = jax.random.normal(key1, shape=(n_steps, self.params.E, self.params.P))
         dZ = jax.random.normal(key2, shape=(n_steps, self.params.E, self.params.S))
         return dW, dZ
 
-    def step(self, initial_state, noise_advective, noise_forcing):
+    def step_SS_ETDRK4_SSP33(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Strang_split(u, 
                          self.E_weights, 
@@ -51,6 +64,18 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                          self.stochastic_forcing_basis,
                          noise_forcing)
         return u
+    
+    def step_ETDRK4(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = ETDRK4(u, 
+                   self.E_weights, 
+                   self.E_2, 
+                   self.Q, 
+                   self.f1, 
+                   self.f2, 
+                   self.f3, 
+                   self.g)
+        return u
 
     def run(self, initial_state, n_steps, noise):
 
@@ -58,10 +83,25 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
+        
+        self.validate_params()
 
-        def scan_fn(y, i):
-            y_next = self.step(y, noise_advective[i], noise_forcing[i])
-            return y_next, y_next
+        # dependent on the method define the scan function.
+        if self.params.method == 'SS_ETDRK4_SSP33':
+            def scan_fn(y, i):
+                y_next = self.step_SS_ETDRK4_SSP33(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
+            
+        elif self.params.method == 'ETDRK4':
+            def scan_fn(y, i):
+                y_next = self.step_ETDRK4(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
+            
+        else:
+            raise ValueError(f"Method {self.params.method} not recognised")
+        # def scan_fn(y, i):
+        #     y_next = self.step(y, noise_advective[i], noise_forcing[i])
+        #     return y_next, y_next
         
         u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
 
@@ -116,7 +156,12 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
     year={2005},
     publisher={SIAM}
     } 
-    Trapezoidal rule has exponential convergence in the complex plane._
+    Trapezoidal rule has exponential convergence in the complex plane.
+    This code differs from the original in the paper, in that KT note that:
+    "When L is real, we can exploit the symmetry and evaluate only in equally spaced points on the upper half of a circle,
+    centered on the real axis, then take the real part of the result.", where here we leave in the more general form, 
+    as to allow complex L associated with dispersion terms, such as in the KdV equation. Furthermore, one also can absorb the factor of 2 into f2.
+    _
 
     Args:
         dt (_type_): _timestep_
@@ -137,13 +182,12 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
-    #LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M) TODO: can remove the nx arguement
+    #LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M) TODO: this would allow the removal of the nx arguement
     Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
     f3 = dt * jnp.mean( (-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=-1)
-    # In the original papers code, one exploits LR being over 1j, and KS equation has real L,
-    # The above helps to deal with equations like KdV, and one also can absorb the factor of 2 into f2.
+    # 
     # Q  = dt * jnp.real(jnp.mean((jnp.exp(LR / 2) - 1) / LR, axis=1))
     # f1 = dt * jnp.real(jnp.mean((-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=1))
     # f2 = dt * jnp.real(jnp.mean((2 + LR + jnp.exp(LR) * (-2 + LR)) / LR**3, axis=1))
@@ -153,7 +197,6 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
 # def step_ETDRK4_original(v, E, E_2, Q, f1, f2, f3, g, stochastic_basis, dt, dW_n):
 #     """ Perform one ETDRK4 time step with stochastic forcing for all ensemble members
 #     original, this is the original, could be improved upon"""
-
 #     Nv = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(v,axis=-1))**2, axis=1)
 #     a = E_2 * v + Q* Nv
 #     Na = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=1)
@@ -167,7 +210,7 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
 #     u_next += stochastic_field
 #     return jnp.fft.fft(u_next, axis=1), u_next # v,u, we do a
 
-def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
+def ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     """ Perform one ETDRK4 time step, following Cox and Matthews,
     precomputed weights are computed using Kassam_Trefethen, with a fixed dt.
     @article{cox2002exponential,
@@ -211,7 +254,7 @@ def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
-def step_Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3):
+def Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3):
     v = jnp.fft.fft(u, axis=1)
     u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )**2
     u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
@@ -340,6 +383,21 @@ def Euler_Maruyama(q,dt,xi_p,dW_t,f_s,dZ_t):
     return _q
 
 def SSP33(q,dt,xi_p,dW_t,f_s,dZ_t):
+    """_SSP33, timestepper originally proposed by Shu and Osher in 1988, 
+    this stochastic version converges to the stratonovich equation, 
+    proven as a subcase of the arguements presented in Ruemelin 1982._
+
+    Args:
+        q (_type_): _description_
+        dt (_type_): _description_
+        xi_p (_type_): _description_
+        dW_t (_type_): _description_
+        f_s (_type_): _description_
+        dZ_t (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     _q1 = Euler_Maruyama(q,dt,xi_p,dW_t,f_s,dZ_t)
     _q1 = 1/3*q+2/3*Euler_Maruyama(_q1,dt,xi_p,dW_t,f_s,dZ_t)
     _q1 = 1/4*q+3/4*Euler_Maruyama(_q1,dt,xi_p,dW_t,f_s,dZ_t)
@@ -347,7 +405,7 @@ def SSP33(q,dt,xi_p,dW_t,f_s,dZ_t):
 
 def Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t):
     u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
-    u = step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g)
+    u = ETDRK4(u, E, E_2, Q, f1, f2, f3, g)
     u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
     return u
 
@@ -355,32 +413,32 @@ def Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t):
 KS_params = {# KS equation. from Kassam Krefethen 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
     "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "sigma": 0.001,
-    "ic": 'Kassam_Trefethen_KS_IC',
+    "ic": 'Kassam_Trefethen_KS_IC', "method": 'SS_ETDRK4_SSP33'
 }
 Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
-    "ic": 'sin',
+    "ic": 'sin', "method": 'SS_ETDRK4_SSP33'
 }
 LinearAdvection_params = {# Heat equation. 
     "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
-    "ic": 'sin',
+    "ic": 'sin', "method": 'SS_ETDRK4_SSP33'
 }
 Burgers_params={# Burgers equation. 
     "c_0": 0, "c_1": 1, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
-    "ic": 'sin',
+    "ic": 'sin', "method": 'SS_ETDRK4_SSP33'
 }
 KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
     "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.06, "dt": 2e-5, "sigma": 0.0,
-    "ic": 'Kassam_Trefethen_KdV_IC_eq3pt1',
+    "ic": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'ETDRK4'
 }
 KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
     "xmin":0, "xmax":1, "nx": 256, "P": 10, "S": 1, "E": 5, "tmax": 10, "dt": 2e-3, "sigma": 0.1,
-    "ic": 'gaussian',
+    "ic": 'gaussian', "method": 'SS_ETDRK4_SSP33'#'ETDRK4'
 }
 
 if __name__ == "__main__":
@@ -413,8 +471,8 @@ if __name__ == "__main__":
     dZ = jax.random.normal(key2, shape=(nmax, E, S))
 
     for n in range(1, nmax):
-        u = step_ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g)
-        #u = step_Dealiased_ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
+        u = ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g)
+        #u = Dealiased_ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
         #u, E, E_2, Q, f1, f2, f3, g
         #u = Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt , stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, dZ[n, :, :])
         uu = uu.at[:, n, :].set(u)
