@@ -13,8 +13,6 @@ def main(cfg: DictConfig):
     print(params)
     fwd_model = ETD_KT_CM_JAX_Vectorised(params)
 
-
-
     
 if __name__ == "__main__":
     main()

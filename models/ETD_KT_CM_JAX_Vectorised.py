@@ -64,8 +64,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         return u_out
 
-def ic(x, E , name):
-    """_Initial condition specifier_
+def initial_condition(x, E , name):
+    """_Initial condition specifier, creates a function of x, 
+    and then tiles it to E ensemble members_
 
     Args:
         x (_type_): _mesh x array_
@@ -77,13 +78,16 @@ def ic(x, E , name):
         consisting of E coppies of the initial condition specified_
     """
     if name == 'sin':
-        ic = jnp.tile(jnp.sin(2 * jnp.pi * x), (E, 1))
-    if name == 'compact_bump':
+        function_of_x= jnp.sin(2 * jnp.pi * x)
+    elif name == 'compact_bump':
         x_min = 0.2; x_max = 0.3
         s = (2 * (x - x_min) / (x_max - x_min)) - 1
-        ans = jnp.exp(-1 / (1 - s**2)) * (jnp.abs(s) < 1)
-        ic = jnp.tile(ans, (E, 1))
-    return ic
+        function_of_x = jnp.exp(-1 / (1 - s**2)) * (jnp.abs(s) < 1)
+    else:
+        raise ValueError(f'Initial condition {name} not implemented')
+    
+    _ic = jnp.tile(function_of_x, (E, 1))
+    return _ic
 
 def Kassam_Trefethen(dt, L, nx, M=32):
     """ Precompute weights for use in ETDRK4.
@@ -142,9 +146,14 @@ def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     year={2002},
     publisher={Elsevier}
     }"""
-    v= jnp.fft.fft(u, axis=1)
-    Nv = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(v,axis=-1))**2, axis=-1)
-    a = E_2 * v + Q * Nv
+    # TODO: Nonlinearity, why real then square?
+    # Answer: We are performing multiplication(nonlinearity) in real space, and then converting to spectral space.
+    # TODO: Nonlinearity, implement an optional dealiasing module. 
+    # TODO: Timestepping, implement an optional time filter exponential cutoff. 
+    v= jnp.fft.fft(u, axis=1)# convert to fourier space
+    # u = jnp.real(jnp.fft.ifft(v,axis=-1))
+    Nv = g * jnp.fft.fft(u**2, axis=-1)# nonlinearity computed in real space.
+    a = E_2 * v + Q * Nv # linearity computed in fourier space.
     Na = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1)
     b = E_2 * v + Q * Na
     Nb = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
@@ -152,6 +161,7 @@ def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
     v_next = E * v + Nv * f1 + 2 * (Na + Nb) * f2 + Nc * f3
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
+
     return u_next
 
 
@@ -283,7 +293,7 @@ if __name__ == "__main__":
     nx, P, S, E, tmax, dt = params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     dx = 1 / nx
     x = jnp.linspace(0, 1, nx, endpoint=False)
-    u = ic(x, E, params["ic"])
+    u = initial_condition(x, E, params["ic"])
     k = jnp.fft.fftfreq(nx, dx)
 
     L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j * k**3 * params["c_3"] - k**4 * params["c_4"]
