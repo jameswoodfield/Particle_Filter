@@ -11,8 +11,11 @@ config.update("jax_enable_x64", True)
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def __init__(self, params):
         self.params = params
-        self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
-        self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
+        self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
+        self.x = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
+        self.dx = self.x[1]-self.x[0]
+        #self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
+        #self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
 
         self.k = jnp.fft.fftfreq(self.params.nx, self.dx) * 2 * jnp.pi # additional multiplication by 2pi
         self.L = -1j * self.k * self.params.c_0 + self.k**2 * self.params.c_2 + 1j * self.k**3 * self.params.c_3 - self.k**4 * self.params.c_4
@@ -356,7 +359,12 @@ KS_params = {# KS equation. from Kassam Krefethen
 }
 Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
+    "ic": 'sin',
+}
+LinearAdvection_params = {# Heat equation. 
+    "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
     "ic": 'sin',
 }
 Burgers_params={# Burgers equation. 
@@ -377,7 +385,7 @@ KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
 
 if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
-    params = KS_params
+    params = LinearAdvection_params#KS_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     #dx = (xmax - xmin) / nx
     #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
@@ -386,10 +394,11 @@ if __name__ == "__main__":
     dx = x[1]-x[0] 
 
     u = initial_condition(x, E, params["ic"])
-    k = jnp.fft.fftfreq(nx, dx) * 2 * jnp.pi 
-
+    k = jnp.fft.fftfreq(nx, dx) * 2 * jnp.pi
+    
     L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
     g = -0.5j * k * params["c_1"]
+
     E_weights, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
     nmax = round(tmax / dt)
     uu = jnp.zeros([E, nmax, nx])

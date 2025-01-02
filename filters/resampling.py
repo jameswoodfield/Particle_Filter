@@ -93,7 +93,6 @@ def default_resampler(particles, weights, key):
 @jax.jit
 def branching(weights, key):
     """Perform a branching step"""
-
     #TODO Change to eliminate the positions array
     positions = jnp.arange(len(weights), dtype=jnp.int32)
     offspring = compute_offspring(weights, key)

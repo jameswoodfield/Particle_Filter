@@ -75,6 +75,7 @@ class ParticleFilter:
 
 def get_log_weight(particle, observation, sigma):
     """Returns the likelihood weight of a particle for a given observation.
+    # TODO: consider reshape(-1), as to not create a copy,
     """
     return -0.5*jnp.sum((particle.flatten()-observation.flatten())**2)/sigma**2
 
