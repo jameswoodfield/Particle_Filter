@@ -97,8 +97,8 @@ def initial_condition(x, E , name):
     ic = jnp.tile(ans, (E, 1))
     return ic
 
-def Kassam_Trefethen(dt, L, nx, M=64,R=1):
-    """ Precompute weights for use in ETDRK4.
+def Kassam_Trefethen(dt, L, nx, M=64, R=1):
+    """_Precompute weights for use in ETDRK4.
     Hard to evaluate functions are computed by a 
     complex contour integration technique in 
     Kassam and Trefethen Siam 2005 
@@ -111,12 +111,29 @@ def Kassam_Trefethen(dt, L, nx, M=64,R=1):
     pages={1214--1233},
     year={2005},
     publisher={SIAM}
-    }"""
+    } 
+    Trapezoidal rule has exponential convergence in the complex plane._
+
+    Args:
+        dt (_type_): _timestep_
+        L (_type_): _Linear operator_
+        nx (_type_): _number of spatial points_
+        M (int, optional): _number of points for integration_. Defaults to 32.
+        R (int, optional): _Radius of circle used_. Defaults to 1.
+
+    Returns:
+        _E : 
+        E_2 :
+        Q :
+        f1 : _See eq2.5 in KassamTrefethen, alpha=f1 _
+        f2 :  beta=f2
+        f3 :  gamma=f3._
+    """
     E = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     #LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
-    LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M)
+    LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M) TODO: can remove the nx arguement
     Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
