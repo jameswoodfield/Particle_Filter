@@ -63,10 +63,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
 
         return u_out
-
 def initial_condition(x, E , name):
-    """_Initial condition specifier, creates a function of x, 
-    and then tiles it to E ensemble members_
+    """_Initial condition specifier_
 
     Args:
         x (_type_): _mesh x array_
@@ -74,20 +72,30 @@ def initial_condition(x, E , name):
         name (_type_): _name of initial condition_
 
     Returns:
-        _type_: _array of shape (E,nx) 
-        consisting of E coppies of the initial condition specified_
+        _type_: _array of shape (E,nx)
+        consisting of E coppies of the initial condition specified
     """
     if name == 'sin':
-        function_of_x= jnp.sin(2 * jnp.pi * x)
+        ans = jnp.sin(2 * jnp.pi * x)
     elif name == 'compact_bump':
         x_min = 0.2; x_max = 0.3
         s = (2 * (x - x_min) / (x_max - x_min)) - 1
-        function_of_x = jnp.exp(-1 / (1 - s**2)) * (jnp.abs(s) < 1)
+        ans = jnp.exp(-1 / (1 - s**2)) * (jnp.abs(s) < 1)
+    elif name == 'Kassam_Trefethen_KS_IC':
+        ans = jnp.cos( x / 16 ) * ( 1 + jnp.sin(x / 16) )
+    elif name == 'Kassam_Trefethen_KdV_IC_eq3pt1':
+        A = 25
+        B = 16
+        ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+2) )**-2
+        ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+1) )**-2
+    elif name == 'gaussian':
+        A = 1; x0 = 0.5; sigma = 0.1
+        ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
     else:
-        raise ValueError(f'Initial condition {name} not implemented')
+        raise ValueError(f"Initial condition {name} not recognised")
     
-    _ic = jnp.tile(function_of_x, (E, 1))
-    return _ic
+    ic = jnp.tile(ans, (E, 1))
+    return ic
 
 def Kassam_Trefethen(dt, L, nx, M=64,R=1):
     """ Precompute weights for use in ETDRK4.
