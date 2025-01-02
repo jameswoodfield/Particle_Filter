@@ -10,11 +10,11 @@ config.update("jax_enable_x64", True)
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def __init__(self, params):
-
         self.params = params
-        self.x = jnp.linspace(0, 1, self.params.nx, endpoint=False)
-        self.dx = 1 / self.params.nx
-        self.k = jnp.fft.fftfreq(self.params.nx, self.dx)
+        self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
+        self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
+
+        self.k = jnp.fft.fftfreq(self.params.nx, self.dx) * 2 * jnp.pi # additional multiplication by 2pi
         self.L = -1j * self.k * self.params.c_0 + self.k**2 * self.params.c_2 + 1j * self.k**3 * self.params.c_3 - self.k**4 * self.params.c_4
         self.g = -0.5j * self.k * self.params.c_1
 
@@ -63,6 +63,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
 
         return u_out
+    
 def initial_condition(x, E , name):
     """_Initial condition specifier_
 
@@ -129,11 +130,11 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
         f2 :  beta=f2
         f3 :  gamma=f3._
     """
-    E = jnp.exp(dt * L)
+    E = jnp.exp(dt * L) 
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
-    #LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
-    LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M) TODO: can remove the nx arguement
+    LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
+    #LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M) TODO: can remove the nx arguement
     Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
@@ -159,10 +160,8 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
 #     Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=1)
 #     v_next = E * v + Nv * f1 + 2 * (Na + Nb) * f2 + Nc * f3
 #     u_next = jnp.real(jnp.fft.ifft(v_next, axis=1))
-
 #     stochastic_field = jnp.einsum('pd,ep->ed', stochastic_basis, dW_n)
 #     u_next += stochastic_field
-
 #     return jnp.fft.fft(u_next, axis=1), u_next # v,u, we do a
 
 def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
@@ -182,21 +181,35 @@ def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     # Answer: We are performing multiplication(nonlinearity) in real space, and then converting to spectral space.
     # TODO: Nonlinearity, implement an optional dealiasing module. 
     # TODO: Timestepping, implement an optional time filter exponential cutoff. 
-    v= jnp.fft.fft(u, axis=1)# convert to fourier space
+    # TODO: axis = 1, is the default behaviour of fft, so could be removed, is explicit,.
     # u = jnp.real(jnp.fft.ifft(v,axis=-1))
-    Nv = g * jnp.fft.fft(u**2, axis=-1)# nonlinearity computed in real space.
-    a = E_2 * v + Q * Nv # linearity computed in fourier space.
-    Na = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1)
+
+    # v= jnp.fft.fft(u, axis=1)# convert to fourier space
+    # Nv = g * jnp.fft.fft(u**2, axis=-1)# nonlinearity computed in real space.
+    # a  = E_2 * v + Q * Nv # linearity computed in fourier space.
+    # Na = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1)
+    # b  = E_2 * v + Q * Na
+    # Nb = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
+    # c  = E_2 * a + Q * (2 * Nb - Nv)
+    # Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
+    # v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+    # u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
+    v = jnp.fft.fft(u, axis=1)
+    u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )**2
+    u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
+    Nv = g * u_sqrd_hat
+    a = E_2 * v + Q * Nv
+    Na = g * jnp.fft.fft( jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1)
     b = E_2 * v + Q * Na
-    Nb = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
+    Nb = g * jnp.fft.fft( jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
     c = E_2 * a + Q * (2 * Nb - Nv)
-    Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
+    Nc = g * jnp.fft.fft( jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
     v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
-def step_Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=1/3):
-    v = jnp.fft.fft(u, axis=1)# get complex representation
+def step_Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3):
+    v = jnp.fft.fft(u, axis=1)
     u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )**2
     u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
     Nv = g * dealias_using_k(u_sqrd_hat, k, cutoff_ratio=cutoff_ratio)
@@ -336,11 +349,10 @@ def Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t):
     return u
 
 # Simulation parameters
-# Simulation parameters
-KS_params = {# KS equation. 
-    "c_0": 0, "c_1": 1, "c_2": 0.1, "c_3": 0.0, "c_4": 0.001,
-    "nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 64, "dt": 1 / 128, "sigma": 0.001,
-    "ic": 'sin',
+KS_params = {# KS equation. from Kassam Krefethen 
+    "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
+    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "sigma": 0.001,
+    "ic": 'Kassam_Trefethen_KS_IC',
 }
 Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
@@ -349,29 +361,36 @@ Heat_params = {# Heat equation.
 }
 Burgers_params={# Burgers equation. 
     "c_0": 0, "c_1": 1, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
     "ic": 'sin',
 }
-KDV_params = {# KdV equation. 
-    "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 0.01, "c_4": 0.0,
-    "nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 8, "dt": 1 / 128, "sigma": 0.0001,
-    "ic": 'sin',
+KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
+    "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.06, "dt": 2e-5, "sigma": 0.0,
+    "ic": 'Kassam_Trefethen_KdV_IC_eq3pt1',
+}
+KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
+    "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
+    "xmin":0, "xmax":1, "nx": 256, "P": 10, "S": 1, "E": 5, "tmax": 10, "dt": 2e-3, "sigma": 0.1,
+    "ic": 'gaussian',
 }
 
 if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
-    params = KDV_params
-    nx, P, S, E, tmax, dt = params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
-    dx = 1 / nx
-    x = jnp.linspace(0, 1, nx, endpoint=False)
+    params = KS_params
+    xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
+    #dx = (xmax - xmin) / nx
+    #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
+    xf = jnp.linspace(xmin, xmax, nx+1)
+    x = 0.5 * ( xf[1:] + xf[:-1] ) # cell centers
+    dx = x[1]-x[0] 
+
     u = initial_condition(x, E, params["ic"])
-    k = jnp.fft.fftfreq(nx, dx)
+    k = jnp.fft.fftfreq(nx, dx) * 2 * jnp.pi 
 
-    L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j * k**3 * params["c_3"] - k**4 * params["c_4"]
+    L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
     g = -0.5j * k * params["c_1"]
-
-    
-    E_weights, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx)
+    E_weights, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
     nmax = round(tmax / dt)
     uu = jnp.zeros([E, nmax, nx])
     uu = uu.at[:, 0, :].set(u)
@@ -385,7 +404,10 @@ if __name__ == "__main__":
     dZ = jax.random.normal(key2, shape=(nmax, E, S))
 
     for n in range(1, nmax):
-        u = Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt , stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, dZ[n, :, :])
+        u = step_ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g)
+        #u = step_Dealiased_ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
+        #u, E, E_2, Q, f1, f2, f3, g
+        #u = Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt , stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, dZ[n, :, :])
         uu = uu.at[:, n, :].set(u)
         if n % 10 == 0:  # Plot every 10 steps for better performance
             plt.clf()
