@@ -89,7 +89,7 @@ def initial_condition(x, E , name):
     _ic = jnp.tile(function_of_x, (E, 1))
     return _ic
 
-def Kassam_Trefethen(dt, L, nx, M=32):
+def Kassam_Trefethen(dt, L, nx, M=64,R=1):
     """ Precompute weights for use in ETDRK4.
     Hard to evaluate functions are computed by a 
     complex contour integration technique in 
@@ -106,12 +106,19 @@ def Kassam_Trefethen(dt, L, nx, M=32):
     }"""
     E = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
-    r = jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
-    LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
-    Q = dt * jnp.real(jnp.mean((jnp.exp(LR / 2) - 1) / LR, axis=1))
-    f1 = dt * jnp.real(jnp.mean((-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=1))
-    f2 = dt * jnp.real(jnp.mean((2 + LR + jnp.exp(LR) * (-2 + LR)) / LR**3, axis=1))
-    f3 = dt * jnp.real(jnp.mean((-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=1))
+    r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
+    #LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
+    LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M)
+    Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
+    f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
+    f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
+    f3 = dt * jnp.mean( (-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=-1)
+    # In the original papers code, one exploits LR being over 1j, and KS equation has real L,
+    # The above helps to deal with equations like KdV, and one also can absorb the factor of 2 into f2.
+    # Q  = dt * jnp.real(jnp.mean((jnp.exp(LR / 2) - 1) / LR, axis=1))
+    # f1 = dt * jnp.real(jnp.mean((-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=1))
+    # f2 = dt * jnp.real(jnp.mean((2 + LR + jnp.exp(LR) * (-2 + LR)) / LR**3, axis=1))
+    # f3 = dt * jnp.real(jnp.mean((-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=1))
     return E, E_2, Q, f1, f2, f3
 
 # def step_ETDRK4_original(v, E, E_2, Q, f1, f2, f3, g, stochastic_basis, dt, dW_n):
@@ -159,10 +166,25 @@ def step_ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     Nb = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
     c = E_2 * a + Q * (2 * Nb - Nv)
     Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
-    v_next = E * v + Nv * f1 + 2 * (Na + Nb) * f2 + Nc * f3
+    v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
-
     return u_next
+
+def step_Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=1/3):
+    v = jnp.fft.fft(u, axis=1)# get complex representation
+    u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )**2
+    u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
+    Nv = g * dealias_using_k(u_sqrd_hat, k, cutoff_ratio=cutoff_ratio)
+    a = E_2 * v + Q * Nv
+    Na = g * dealias_using_k(jnp.fft.fft( jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1), k, cutoff_ratio=cutoff_ratio)
+    b = E_2 * v + Q * Na
+    Nb = g * dealias_using_k(jnp.fft.fft( jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1), k, cutoff_ratio=cutoff_ratio)
+    c = E_2 * a + Q * (2 * Nb - Nv)
+    Nc = g * dealias_using_k(jnp.fft.fft( jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1), k, cutoff_ratio=cutoff_ratio)
+    v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+    u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
+    return u_next
+
 
 
 def Muscl_Limiter(r):
