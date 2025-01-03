@@ -30,12 +30,18 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
     def validate_params(self):
-        if self.params.method not in ['SS_ETDRK4_SSP33', 'ETDRK4']:
+        if self.params.method not in ['SS_ETDRK4_SSP33','Dealiased_SS_ETDRK4_SSP33', 'ETDRK4', 'Dealiased_ETDRK4']:
             raise ValueError(f"Method {self.params.method} not recognised")
         if self.params.method == 'SS_ETDRK4_SSP33':
             if self.params.P == 0 or self.params.S == 0:
                 raise ValueError(f"Method {self.params.method} requires P and S to be greater than 0")
+        if self.params.method == 'Dealiased_SS_ETDRK4_SSP33':
+            if self.params.P == 0 or self.params.S == 0:
+                raise ValueError(f"Method {self.params.method} requires P and S to be greater than 0")
         if self.params.method == 'ETDRK4':
+            if self.params.P != 0 or self.params.S != 0:
+                raise ValueError(f"Method {self.params.method} requires P and S to be 0")
+        if self.params.method == 'Dealiased_ETDRK4':
             if self.params.P != 0 or self.params.S != 0:
                 raise ValueError(f"Method {self.params.method} requires P and S to be 0")
         if self.params.E < 1:
@@ -64,6 +70,24 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                          self.stochastic_forcing_basis,
                          noise_forcing)
         return u
+
+    def step_Dealiased_SS_ETDRK4_SSP33(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_Strang_split(u, 
+                         self.E_weights, 
+                         self.E_2, 
+                         self.Q, 
+                         self.f1, 
+                         self.f2, 
+                         self.f3, 
+                         self.g, 
+                         self.params.dt,
+                         self.stochastic_advective_basis,
+                         noise_advective,
+                         self.stochastic_forcing_basis,
+                         noise_forcing,
+                         self.k)
+        return u
     
     def step_ETDRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
@@ -76,6 +100,19 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                    self.f3, 
                    self.g)
         return u
+    
+    def step_Dealiased_ETDRK4(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_ETDRK4(u, 
+                   self.E_weights, 
+                   self.E_2, 
+                   self.Q, 
+                   self.f1, 
+                   self.f2, 
+                   self.f3, 
+                   self.g,
+                   self.k)
+        return u
 
     def run(self, initial_state, n_steps, noise):
 
@@ -84,17 +121,26 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             self.key2, key2 = jax.random.split(self.key2, 2)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
         
-        self.validate_params()
+        #self.validate_params()
 
         # dependent on the method define the scan function.
         if self.params.method == 'SS_ETDRK4_SSP33':
             def scan_fn(y, i):
                 y_next = self.step_SS_ETDRK4_SSP33(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
+        elif self.params.method == 'Dealiased_SS_ETDRK4_SSP33':
+            def scan_fn(y, i):
+                y_next = self.step_Dealiased_SS_ETDRK4_SSP33(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
             
         elif self.params.method == 'ETDRK4':
             def scan_fn(y, i):
                 y_next = self.step_ETDRK4(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
+            
+        elif self.params.method == 'Dealiased_ETDRK4':
+            def scan_fn(y, i):
+                y_next = self.step_Dealiased_ETDRK4(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
             
         else:
@@ -132,6 +178,11 @@ def initial_condition(x, E , name):
         B = 16
         ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+2) )**-2
         ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+1) )**-2
+    elif name == 'Kassam_Trefethen_KdV_IC_shift':
+        A = 25
+        B = 16
+        ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+3) )**-2
+        ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+2) )**-2
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
@@ -409,12 +460,25 @@ def Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t):
     u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
     return u
 
+def Dealiased_Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t, k):
+    u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
+    u = Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k)
+    u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
+    return u
+
 # Simulation parameters
 KS_params = {# KS equation. from Kassam Krefethen 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
     "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "sigma": 0.001,
     "ic": 'Kassam_Trefethen_KS_IC', "method": 'SS_ETDRK4_SSP33'
 }
+
+KS_params_2 = {# KS equation. from Kassam Krefethen 
+    "c_0": 0, "c_1": 1, "c_2": 0.1, "c_3": 0.0, "c_4": 1e-5,
+    "xmin": 0, "xmax": 1, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 1, "dt": 0.0025 , "sigma": 0.001,
+    "ic": 'gaussian', "method": 'SS_ETDRK4_SSP33'
+}
+
 Heat_params = {# Heat equation. 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
@@ -443,7 +507,7 @@ KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
 
 if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
-    params = LinearAdvection_params#KS_params
+    params = KS_params_2
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     #dx = (xmax - xmin) / nx
     #x = jnp.linspace(xmin, xmax, nx, endpoint=False)

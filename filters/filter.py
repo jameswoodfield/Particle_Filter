@@ -47,6 +47,7 @@ class ParticleFilter:
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total):
+        # n_total is ?
         def scan_fn(val, i):
             particles, signal = val
             particles, signal, observation = self.run_step(particles, signal)
@@ -75,7 +76,7 @@ class ParticleFilter:
 
 def get_log_weight(particle, observation, sigma):
     """Returns the likelihood weight of a particle for a given observation.
-    # TODO: consider reshape(-1), as to not create a copy,
+    # TODO: consider .reshape(-1), as to not create a copy,
     """
     return -0.5*jnp.sum((particle.flatten()-observation.flatten())**2)/sigma**2
 
