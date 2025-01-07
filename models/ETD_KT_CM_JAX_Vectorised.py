@@ -23,8 +23,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
         self.nmax = round(self.params.tmax / self.params.dt)
+
         self.stochastic_advective_basis = self.params.sigma*jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * self.x / (p + 1)) for p in range(self.params.P)])
-        self.stochastic_forcing_basis = self.params.sigma*jnp.array([1 / (s + 1) * jnp.sin(2 * jnp.pi * self.x / (s + 1)) for s in range(self.params.S)])
+        self.stochastic_forcing_basis = 0*self.params.sigma*jnp.array([1 / (s + 1) * jnp.sin(2 * jnp.pi * self.x / (s + 1)) for s in range(self.params.S)])
 
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
@@ -122,7 +123,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
         
         #self.validate_params()
-
         # dependent on the method define the scan function.
         if self.params.method == 'SS_ETDRK4_SSP33':
             def scan_fn(y, i):
@@ -145,9 +145,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             
         else:
             raise ValueError(f"Method {self.params.method} not recognised")
-        # def scan_fn(y, i):
-        #     y_next = self.step(y, noise_advective[i], noise_forcing[i])
-        #     return y_next, y_next
         
         u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
 
@@ -167,25 +164,31 @@ def initial_condition(x, E , name):
     """
     if name == 'sin':
         ans = jnp.sin(2 * jnp.pi * x)
+
     elif name == 'compact_bump':
         x_min = 0.2; x_max = 0.3
         s = (2 * (x - x_min) / (x_max - x_min)) - 1
         ans = jnp.exp(-1 / (1 - s**2)) * (jnp.abs(s) < 1)
+
     elif name == 'Kassam_Trefethen_KS_IC':
         ans = jnp.cos( x / 16 ) * ( 1 + jnp.sin(x / 16) )
+
     elif name == 'Kassam_Trefethen_KdV_IC_eq3pt1':
         A = 25
         B = 16
         ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+2) )**-2
         ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+1) )**-2
+
     elif name == 'Kassam_Trefethen_KdV_IC_shift':
         A = 25
         B = 16
         ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+3) )**-2
         ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+2) )**-2
+
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
+
     else:
         raise ValueError(f"Initial condition {name} not recognised")
     
@@ -238,11 +241,6 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
     f3 = dt * jnp.mean( (-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=-1)
-    # 
-    # Q  = dt * jnp.real(jnp.mean((jnp.exp(LR / 2) - 1) / LR, axis=1))
-    # f1 = dt * jnp.real(jnp.mean((-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=1))
-    # f2 = dt * jnp.real(jnp.mean((2 + LR + jnp.exp(LR) * (-2 + LR)) / LR**3, axis=1))
-    # f3 = dt * jnp.real(jnp.mean((-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=1))
     return E, E_2, Q, f1, f2, f3
 
 # def step_ETDRK4_original(v, E, E_2, Q, f1, f2, f3, g, stochastic_basis, dt, dW_n):
@@ -345,7 +343,6 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
     return spectral_field
 
 
-
 def Muscl_Limiter(r):
     """_We implement the Koren Limiter
     @book{koren1993robust,
@@ -379,6 +376,15 @@ def getEdgeGradients(f):
     return fex
 
 def DV(a,b):
+    """_Divides with error handling_
+
+    Args:
+        a (_type_): _numerator_
+        b (_type_): _denominator_
+
+    Returns:
+        _type_: _answer_
+    """
     return a/(b + 1e-16)
 
 def pos(c):
@@ -484,30 +490,35 @@ Heat_params = {# Heat equation.
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
     "ic": 'sin', "method": 'SS_ETDRK4_SSP33'
 }
-LinearAdvection_params = {# Heat equation. 
+
+LinearAdvection_params = {# Linear Advection equation. 
     "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
     "ic": 'sin', "method": 'SS_ETDRK4_SSP33'
 }
+
 Burgers_params={# Burgers equation. 
     "c_0": 0, "c_1": 1, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
     "ic": 'sin', "method": 'SS_ETDRK4_SSP33'
 }
+
 KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
     "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.06, "dt": 2e-5, "sigma": 0.0,
     "ic": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'ETDRK4'
 }
+
 KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
     "xmin":0, "xmax":1, "nx": 256, "P": 10, "S": 1, "E": 5, "tmax": 10, "dt": 2e-3, "sigma": 0.1,
-    "ic": 'gaussian', "method": 'SS_ETDRK4_SSP33'#'ETDRK4'
+    "ic": 'gaussian', "method": 'SS_ETDRK4_SSP33'
 }
 
 if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
-    params = KS_params_2
+    params = KDV_params_2
+    params = LinearAdvection_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     #dx = (xmax - xmin) / nx
     #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
@@ -515,7 +526,7 @@ if __name__ == "__main__":
     x = 0.5 * ( xf[1:] + xf[:-1] ) # cell centers
     dx = x[1]-x[0] 
 
-    u = initial_condition(x, E, params["ic"])
+    u = initial_condition(x, E, params["ic"]) + 0.00001*jax.random.normal(key=jax.random.PRNGKey(42), shape=(nx,))
     k = jnp.fft.fftfreq(nx, dx) * 2 * jnp.pi
     
     L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
