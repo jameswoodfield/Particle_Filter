@@ -709,12 +709,6 @@ if __name__ == "__main__":
     stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
     stochastic_forcing_basis   = params["sigma"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
 
-    
-    P = 23
-    stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, 'sin')
-    print("sin_shape",stochastic_advection_basis.shape)
-    stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, 'none')
-    print("none_shape",stochastic_advection_basis.shape)
 
 
     key = jax.random.PRNGKey(0)

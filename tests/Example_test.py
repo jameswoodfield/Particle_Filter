@@ -9,6 +9,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 from models.ETD_KT_CM_JAX_Vectorised import initial_condition
 from models.ETD_KT_CM_JAX_Vectorised import dealias_using_k
+from models.ETD_KT_CM_JAX_Vectorised import stochastic_basis_specifier
 
 ###################### Initial Condition ######################
 
@@ -53,7 +54,25 @@ def test_initial_condition_zero_ensemble():
     assert jnp.array_equal(initial_condition(x, E, name), expected_output)
     assert initial_condition(x, E, name).shape == (0, nx)
 
+###################### stochastic basis ######################
 
+def test_stochastic_basis_dimensions():
+    nx = 5
+    x = jnp.linspace(0, 1, nx)
+    P = 23
+    ans_1 =  stochastic_basis_specifier(x, P, 'sin')
+    ans_2 =  stochastic_basis_specifier(x, P, 'none')
+    assert ans_1.shape == (P, nx)
+    assert ans_2.shape == (P, nx)
+
+def test_stochastic_basis_invalid_name():
+    nx = 5
+    x = jnp.linspace(0, 1, nx)
+    P = 23
+    name = 'invalid'
+    with pytest.raises(ValueError):
+        stochastic_basis_specifier(x, P, name)
+    
 ###################### Dealiasing tests ######################
 def dealias(u_hat, k, cutoff_ratio=2/3):# for testing dealiasing
     max_k = jnp.max(jnp.abs(k))
