@@ -6,6 +6,8 @@ try:
 except ImportError:
     from base import BaseModel
 from jax.config import config
+import yaml
+
 config.update("jax_enable_x64", True)
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
@@ -13,7 +15,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.params = params
         self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
         self.x = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
-        self.dx = self.x[1]-self.x[0]
+        self.dx = self.x[1]-self.x[0] # cell width
         #self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
         #self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
 
@@ -30,7 +32,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def create_basis(self):
         self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.P, self.params.Advection_basis_name)
         self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.S, self.params.Forcing_basis_name)
-        #"Advection_basis": 'none', "Forcing_basis": 'none'
         
 
     def validate_params(self):
@@ -202,7 +203,7 @@ def stochastic_basis_specifier(x, P, name):
     """_Stochastic Basis specifier_
 
     Args:
-        x (_type_): _mesh_
+        x (_type_): _mesh array_
         P (_type_): _number of basis functions_
         name (_type_): _name of ic_
 
@@ -210,12 +211,12 @@ def stochastic_basis_specifier(x, P, name):
         ValueError: _description_
 
     Returns:
-        _type_: _description_
+        _array_: _(P,nx)_
     """
     if name == 'sin':
         ans = jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * x * (p + 1)) for p in range(P)])
     elif name =='none':
-        ans = jnp.zeros([x.shape[0],P])
+        ans = jnp.zeros([P,x.shape[0]])
     else:
         raise ValueError(f"Stochastic basis {name} not recognised")
     return ans
@@ -268,7 +269,8 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
     f3 = dt * jnp.mean( (-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=-1)
     return E, E_2, Q, f1, f2, f3
 
-def Lobbe_Woodfield_contour_trick(L, dt, M=64, R=1):
+def LW_contour_trick(L, dt, M=64, R=1):
+    # new speculative stuff
     E = jnp.exp(dt * L)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
@@ -276,13 +278,12 @@ def Lobbe_Woodfield_contour_trick(L, dt, M=64, R=1):
     LW  = jnp.sqrt(dt) * jnp.mean( jnp.sqrt( (jnp.exp(2 * LR) - 1 ) / (2*LR)), axis=-1)
     return E, Q, LW
 
-def SETDRK1(u, E, Q, LW, g, k, xi_p, dW_t, cutoff_ratio=2/3):
+def SETDRK1(u, E, Q, LW, g, k, xi_p, dW_t, cutoff_ratio=2/3):    
+    # new speculative stuff
     v = jnp.fft.fft(u, axis=-1)
     dW_t = dW_t
     print(xi_p.shape,dW_t.shape)
-    #RVF = jnp.einsum('jk,lj ->lk',xi_p*0,dW_t)
-    RVF = jnp.einsum('ij,lj ->li',xi_p*0,dW_t)
-    #u = jnp.real( jnp.fft.ifft(v, axis=-1) )
+    RVF = jnp.einsum('jk,lj ->lk',xi_p*0,dW_t)
     u_squared = u**2
     u_squared_hat = jnp.fft.fft(u_squared, axis=-1)
     Nv = g * dealias_using_k(u_squared_hat, k, cutoff_ratio=cutoff_ratio)# computes (u^2)_x# f
@@ -292,94 +293,86 @@ def SETDRK1(u, E, Q, LW, g, k, xi_p, dW_t, cutoff_ratio=2/3):
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
-# def step_ETDRK4_original(v, E, E_2, Q, f1, f2, f3, g, stochastic_basis, dt, dW_n):
-#     """ Perform one ETDRK4 time step with stochastic forcing for all ensemble members
-#     original, this is the original, could be improved upon"""
-#     Nv = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(v,axis=-1))**2, axis=1)
-#     a = E_2 * v + Q* Nv
-#     Na = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=1)
-#     b = E_2 * v + Q * Na
-#     Nb = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=1)
-#     c = E_2 * a + Q * (2 * Nb - Nv)
-#     Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=1)
-#     v_next = E * v + Nv * f1 + 2 * (Na + Nb) * f2 + Nc * f3
-#     u_next = jnp.real(jnp.fft.ifft(v_next, axis=1))
-#     stochastic_field = jnp.einsum('pd,ep->ed', stochastic_basis, dW_n)
-#     u_next += stochastic_field
-#     return jnp.fft.fft(u_next, axis=1), u_next # v,u, we do a
-
 def IFRK4(u,E,E_2,g,k,L):
-    """_Integrating factor Runge Kuta_
+    """_Integrating factor Runge Kutta 4_
 
     Args:
         u (_type_): _description_
         E (_type_): _description_
         E_2 (_type_): _description_
     """
-    v = jnp.fft.fft(u,axis=1)
-    g = -.5j*dt*k #### remember this. 
+    # it may be possible to define these out of the scope, then reassign them in the scope
+    # this would allow for the function not to have to recompute them each time.
+    g = -.5j*dt*k
     E = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
 
-    a = g*jnp.fft.fft( (jnp.fft.ifft( v ).real)**2 )
+    v = jnp.fft.fft(u,axis=1)
+    def N(_in,g):
+        return g * jnp.fft.fft(jnp.real(jnp.fft.ifft(_in,axis=-1))**2, axis=-1)
+
+    a = N(v,g)
     u1 = E_2*(v + a/2)
-    b = g*jnp.fft.fft( (jnp.fft.ifft( u1 ).real)**2 )
+    b = N(u1,g)
     u2 = E_2*(v + b/2)
-    c = g*jnp.fft.fft( (jnp.fft.ifft( u2 ).real)**2 )
+    c = N(u2,g)
     u3 = E*v + E_2*c
-    d = g*jnp.fft.fft( (jnp.fft.ifft( u3 ).real)**2 )
+    d = N(u3,g)
     v = E*v + (E*a + 2*E_2*(b+c) +d)/6
     u_next = jnp.fft.ifft(v).real
     return u_next
 
 def IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt):
-    #TODO: include the 1/dt properly
-    dW_t = dW_t*jnp.sqrt(dt)
-    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    dW_t = dW_t*jnp.sqrt(dt) / dt 
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t) # xi = (P,nx), dW_t = (E,P) so RVF = (E,nx)
     v = jnp.fft.fft(u,axis=1)
     g = -.5j*dt*k
     E = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
-    u = jnp.fft.ifft( v ).real
-    a = g*jnp.fft.fft( (u + RVF)*u )
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )# convert to real space
+        n = (u + RVF)*u # nonlinearity in real space
+        return g * jnp.fft.fft(n , axis=-1)# compute derivative in spectral space
+
+    a  = N(v,RVF,g)
     v1 = E_2*(v + a/2)
-    u1 = jnp.fft.ifft( v1 ).real
-    b = g*jnp.fft.fft( (u1+RVF)*u1 )
+    b  = N(v1,RVF,g)
     v2 = E_2*(v + b/2)
-    u2 = jnp.fft.ifft( v2 ).real
-    c = g*jnp.fft.fft( (u2+RVF)*u2)
+    c  = N(v2,RVF,g)
     v3 = E*v + E_2*c
-    u3 = jnp.fft.ifft( v3 ).real
-    d = g*jnp.fft.fft( (u3+RVF)*u3 )
-    v = E*v + (E*a + 2*E_2*(b+c) +d)/6
-    u_next = jnp.fft.ifft(v).real
+    d  = N(v3,RVF,g)
+    v  = E*v + (E*a + 2*E_2*(b+c) +d)/6
+
+    u_next = jnp.real( jnp.fft.ifft(v) )
     return u_next
 
-@jax.jit
 def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    #TODO: include the 1/dt properly
-    dW_t = dW_t*jnp.sqrt(dt)
+    dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u,axis=1)
-    g = -.5j*dt*k
+    g = -.5j * dt * k
     E = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
-    u = jnp.fft.ifft( v ).real
-    a = g*dealias_using_k(jnp.fft.fft( (u + RVF)*u ), k, cutoff_ratio=cutoff_ratio)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + _RVF)*r
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    a = N(v,RVF,g)
     v1 = E_2*(v + a/2)
-    u1 = jnp.fft.ifft( v1 ).real
-    b = g*dealias_using_k(jnp.fft.fft( (u1+RVF)*u1 ), k, cutoff_ratio=cutoff_ratio)
+    b = N(v1,RVF,g)
     v2 = E_2*(v + b/2)
-    u2 = jnp.fft.ifft( v2 ).real
-    c = g*dealias_using_k(jnp.fft.fft( (u2+RVF)*u2), k, cutoff_ratio=cutoff_ratio)
+    c = N(v2,RVF,g)
     v3 = E*v + E_2*c
-    u3 = jnp.fft.ifft( v3 ).real
-    d = g*dealias_using_k(jnp.fft.fft( (u3+RVF)*u3 ), k, cutoff_ratio=cutoff_ratio)
-    v = E*v + (E*a + 2*E_2*(b+c) +d)/6
+    d = N(v3,RVF,g)
+    v = E*v + ( E*a + 2*E_2*(b+c) +d )/6
+
     u_next = jnp.fft.ifft(v).real
     return u_next
 
-    
 
 def ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     """ Perform one ETDRK4 time step, following Cox and Matthews,
@@ -394,68 +387,67 @@ def ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     year={2002},
     publisher={Elsevier}
     }"""
-    # u = jnp.real(jnp.fft.ifft(v,axis=-1))
-    # v= jnp.fft.fft(u, axis=1)# convert to fourier space
-    # Nv = g * jnp.fft.fft(u**2, axis=-1)# nonlinearity computed in real space.
-    # a  = E_2 * v + Q * Nv # linearity computed in fourier space.
-    # Na = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1)
-    # b  = E_2 * v + Q * Na
-    # Nb = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
-    # c  = E_2 * a + Q * (2 * Nb - Nv)
-    # Nc = g * jnp.fft.fft(jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
-    # v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
-    # u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
-    v = jnp.fft.fft(u, axis=1)
-    u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )**2
-    u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
-    Nv = g * u_sqrd_hat
+    def N(in_field,g):
+        return g * jnp.fft.fft( jnp.real(jnp.fft.ifft(in_field,axis=-1))**2, axis=-1)
+    
+    v = jnp.fft.fft(u, axis=-1)
+    Nv = N(v,g)
     a = E_2 * v + Q * Nv
-    Na = g * jnp.fft.fft( jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1)
+    Na = N(a,g)
     b = E_2 * v + Q * Na
-    Nb = g * jnp.fft.fft( jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1)
+    Nb = N(b,g)
     c = E_2 * a + Q * (2 * Nb - Nv)
-    Nc = g * jnp.fft.fft( jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1)
+    Nc = N(c,g)
     v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
 def Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3):
-    v = jnp.fft.fft(u, axis=1)
-    u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )**2
-    u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
-    Nv = g * dealias_using_k(u_sqrd_hat, k, cutoff_ratio=cutoff_ratio)
+    v = jnp.fft.fft(u, axis=-1)
+    # perhaps reasigning in the scope of the function allows faster access, requires testing.
+    E=E;E_2=E_2;Q=Q;f1=f1;f2=f2;f3=f3;g=g;k=k;cutoff_ratio=cutoff_ratio
+
+    def N(_v,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = r*r
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    Nv = N(v,g)
     a = E_2 * v + Q * Nv
-    Na = g * dealias_using_k(jnp.fft.fft( jnp.real(jnp.fft.ifft(a,axis=-1))**2, axis=-1), k, cutoff_ratio=cutoff_ratio)
+    Na = N(a,g)
     b = E_2 * v + Q * Na
-    Nb = g * dealias_using_k(jnp.fft.fft( jnp.real(jnp.fft.ifft(b,axis=-1))**2, axis=-1), k, cutoff_ratio=cutoff_ratio)
+    Nb = N(b,g)
     c = E_2 * a + Q * (2 * Nb - Nv)
-    Nc = g * dealias_using_k(jnp.fft.fft( jnp.real(jnp.fft.ifft(c,axis=-1))**2, axis=-1), k, cutoff_ratio=cutoff_ratio)
+    Nc = N(c,g)
     v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
 
 def Dealiased_SETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
-    """This is a hunch based method, for 1/2 strong convergence,
-    I so far have shown numerically it performs very similarly to the IFSRK4 method which I can justify."""
-    dW_t = dW_t*jnp.sqrt(dt)
-    RVF = jnp.einsum('ij,lj ->li',xi_p,dW_t)
-    #TODO: include the 1/dt 
+    # new speculative stuff
+    dW_t = dW_t*jnp.sqrt(dt)/dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
-    u_sqrd = jnp.real( jnp.fft.ifft(v, axis=-1) )
-    u_sqrd = u_sqrd*(u_sqrd + RVF)
-    u_sqrd_hat = jnp.fft.fft(u_sqrd, axis=-1)
-    Nv = g * dealias_using_k(u_sqrd_hat, k, cutoff_ratio=cutoff_ratio)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + _RVF)*r
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    Nv = N(v,RVF,g)
     a = E_2 * v + Q * Nv
-    ar = jnp.real(jnp.fft.ifft(a,axis=-1))
-    Na = g * dealias_using_k(jnp.fft.fft( ar * (ar + RVF), axis=-1), k, cutoff_ratio=cutoff_ratio)
+    Na =  N(a,RVF,g)
     b = E_2 * v + Q * Na
-    br = jnp.real(jnp.fft.ifft(b,axis=-1))
-    Nb = g * dealias_using_k(jnp.fft.fft( br * (br + RVF), axis=-1), k, cutoff_ratio=cutoff_ratio)
+    Nb =  N(b,RVF,g)
     c = E_2 * a + Q * (2 * Nb - Nv)
-    cr = jnp.real(jnp.fft.ifft(c,axis=-1))
-    Nc = g * dealias_using_k(jnp.fft.fft( cr*(cr + RVF), axis=-1), k, cutoff_ratio=cutoff_ratio)
+    Nc =  N(c,RVF,g)
     v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
@@ -558,7 +550,6 @@ def Upwind(f_R, f_L, Ufx):
 
 
 
-
 def Euler_Maruyama(q,dt,xi_p,dW_t,f_s,dZ_t):
     """_Euler Maruyama scheme
     $$ q^{n+1} = q^n - (F_{i+1/2}-F_{i-1/2}) \Delta W + f_s \Delta Z $$_
@@ -617,13 +608,15 @@ def Dealiased_Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_
     return u
 
 # Simulation parameters
-KS_params = {# KS equation, from Kassam Krefethen 
+KS_params = {# KS equation, from Kassam Krefethen
+    "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
     "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "sigma": 0.001,
-    "ic": 'Kassam_Trefethen_KS_IC', "method": 'SS_ETDRK4_SSP33',
+    "ic": 'Kassam_Trefethen_KS_IC', "method": 'ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KS_params_SALT = {# KS equation, from Kassam Krefethen with transport noise
+    "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
     "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 1, "S": 1, "E": 1, "tmax": 150, "dt": 0.25, "sigma": 0.001,
     "ic": 'Kassam_Trefethen_KS_IC', "method": 'SS_ETDRK4_SSP33',
@@ -631,6 +624,7 @@ KS_params_SALT = {# KS equation, from Kassam Krefethen with transport noise
 }
 
 KS_params_2 = {# KS equation, not from Kassam Krefethen 
+    "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 0.1, "c_3": 0.0, "c_4": 1e-5,
     "xmin": 0, "xmax": 1, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 1, "dt": 0.0025 , "sigma": 0.001,
     "ic": 'gaussian', "method": 'SS_ETDRK4_SSP33',
@@ -638,13 +632,15 @@ KS_params_2 = {# KS equation, not from Kassam Krefethen
 }
 
 Heat_params = {# Heat equation. 
+    "equation_name" : 'Heat equation', 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.1,
     "ic": 'sin', "method": 'SS_ETDRK4_SSP33',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 
-LinearAdvection_params = {# Linear Advection equation. 
+LinearAdvection_params = {# Linear Advection equation.
+    "equation_name" : 'Linear Advection equation', 
     "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
     "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
     "ic": 'sin', "method": 'SS_ETDRK4_SSP33',
@@ -682,6 +678,14 @@ KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
 if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
     params = LinearAdvection_params#KDV_params_SALT#KDV_params_SALT
+    params = KDV_params
+    params = KS_params
+
+
+    run_file_name = f'/Users/jmw/Documents/GitHub/Particle_Filter/config/auto_yaml/data.yml'
+    with open(f'{run_file_name}', 'w') as outfile:
+        yaml.dump(params, outfile, default_flow_style=False)
+
     # params = LinearAdvection_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     #dx = (xmax - xmin) / nx
@@ -696,14 +700,22 @@ if __name__ == "__main__":
     L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
     g = -0.5j * k * params["c_1"]
 
-    #E_weights, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
-    E_weights, Q, LW = Lobbe_Woodfield_contour_trick(L, dt, M=64, R=1)
+    E_weights, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
+    E_weights, Q, LW = LW_contour_trick(L, dt, M=64, R=1)
     nmax = round(tmax / dt)
     uu = jnp.zeros([E, nmax, nx])
     uu = uu.at[:, 0, :].set(u)
 
     stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
     stochastic_forcing_basis   = params["sigma"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
+
+    
+    P = 23
+    stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, 'sin')
+    print("sin_shape",stochastic_advection_basis.shape)
+    stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, 'none')
+    print("none_shape",stochastic_advection_basis.shape)
+
 
     key = jax.random.PRNGKey(0)
     key1, key2 = jax.random.split(key)
@@ -712,13 +724,13 @@ if __name__ == "__main__":
     print(stochastic_advection_basis.shape,dW.shape)
 
     for n in range(1, nmax):
-        #u = IFRK4(u,E_weights,E_2,g,k,L)
-        u = SETDRK1(u, E, Q, LW, g, k, stochastic_advection_basis,dW[n, :, :], cutoff_ratio=2/3)
+        u = IFRK4(u,E_weights,E_2,g,k,L)
+        #u = SETDRK1(u, E, Q, LW, g, k, stochastic_advection_basis,dW[n, :, :], cutoff_ratio=2/3)
         #u = Dealiased_SETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt)
-        #u = Dealiased_IFSRK4(u,E_weights,E_2,g,k,L,0*stochastic_advection_basis,dW[n, :, :],dt)
+        #u = Dealiased_IFSRK4(u,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
         # dealiasing is important for the IFSRK4 method.
 
-        #u_benchmark = ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g)
+        #u = ETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g)
         #u_benchmark = Dealiased_ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
         #u, E, E_2, Q, f1, f2, f3, g
         #u_benchmark = Dealiased_IFSRK4(u_benchmark,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
