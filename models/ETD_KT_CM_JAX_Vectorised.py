@@ -35,8 +35,12 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         
 
     def validate_params(self):
-        if self.params.method not in ['SS_ETDRK4_SSP33','Dealiased_SS_ETDRK4_SSP33', 'ETDRK4', 'Dealiased_ETDRK4']:
+        if self.params.method not in ['SS_ETDRK4_SSP33',\
+                                     'Dealiased_SS_ETDRK4_SSP33',\
+                                     'ETDRK4',\
+                                     'Dealiased_ETDRK4']:
             raise ValueError(f"Method {self.params.method} not recognised")
+        
         if self.params.method == 'SS_ETDRK4_SSP33':
             if self.params.P == 0 or self.params.S == 0:
                 raise ValueError(f"Method {self.params.method} requires P and S to be greater than 0")
@@ -261,8 +265,7 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
     E = jnp.exp(dt * L) 
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
-    LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
-    #LR = dt * L[:, None] + r[None, :] # broadcasting (nx,M) TODO: this would allow the removal of the nx arguement
+    LR = dt * L[:, None] + r[None, :]
     Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
@@ -270,7 +273,6 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
     return E, E_2, Q, f1, f2, f3
 
 def LW_contour_trick(L, dt, M=64, R=1):
-    # new speculative stuff
     E = jnp.exp(dt * L)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))

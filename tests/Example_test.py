@@ -119,6 +119,18 @@ def test_dealiasing_equivalence():
          "test 2"
     assert jnp.allclose(m1, ans, atol=1e-6), \
          "test 3"
+    
+
+def test_Contour_integration_LR_computation():
+    R=10;M=64;dt=0.01;nx=128;dx=1/nx
+    k = jnp.fft.fftfreq(nx, dx, dtype=jnp.complex128) * 2 * jnp.pi
+    L = -1j * k * 3 + k**2 * 2 + 1j*k**3 * 1 - k**4 * 1/2
+    r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
+    LR_1 = dt * jnp.transpose(jnp.tile(L, (M, 1))) + jnp.tile(r, (nx, 1))
+    LR_2 = dt * L[:, None] + r[None, :]
+    assert jnp.allclose(LR_1, LR_2, atol=1e-16), "test equivalence of LR_1 and LR_2"
+
+
 
 #test_initial_condition_sin()
 if __name__ == "__main__":
