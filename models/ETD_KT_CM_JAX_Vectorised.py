@@ -14,7 +14,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def __init__(self, params):
         self.params = params
         self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
-        self.x = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
+        self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
         self.dx = self.x[1]-self.x[0] # cell width
         #self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
         #self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
@@ -55,6 +55,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                 raise ValueError(f"Method {self.params.method} requires P and S to be 0")
         if self.params.E < 1:
             raise ValueError(f"Number of ensemble members E must be greater than or equal to 1")
+        
         pass
 
 
@@ -187,11 +188,9 @@ def initial_condition(x, E , name):
         ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+2) )**-2
         ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+1) )**-2
 
-    elif name == 'Kassam_Trefethen_KdV_IC_shift':
-        A = 25
-        B = 16
-        ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+3) )**-2
-        ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+2) )**-2
+    elif name == 'traveling_wave':
+        beta = 3
+        ans  =  12 * beta**2 * jnp.cosh( beta * (x) )**-2
 
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
@@ -221,6 +220,12 @@ def stochastic_basis_specifier(x, P, name):
         ans = jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * x * (p + 1)) for p in range(P)])
     elif name =='none':
         ans = jnp.zeros([P,x.shape[0]])
+    elif name == 'cos':
+        ans = jnp.zeros((P, nx))
+        for p in range(P):
+            ans = ans.at[p, :].set(jnp.cos((p+1)*2*jnp.pi*x))
+    elif name == 'constant':
+        ans = jnp.ones((P, nx))# each basis function is a constant
     else:
         raise ValueError(f"Stochastic basis {name} not recognised")
     return ans
@@ -375,7 +380,7 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     u_next = jnp.fft.ifft(v).real
     return u_next
 
-
+@jax.jit
 def ETDRK4(u, E, E_2, Q, f1, f2, f3, g):
     """ Perform one ETDRK4 time step, following Cox and Matthews,
     precomputed weights are computed using Kassam_Trefethen, with a fixed dt.
@@ -470,10 +475,6 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
         _type_: _dealiased spectral field_
     """
     k_magnitude = jnp.abs(k)
-    #max_k = jnp.max(k_magnitude)
-    #cutoff = max_k * cutoff_ratio
-    #mask = k_magnitude <= cutoff
-    #spectral_field = spectral_field * mask
     spectral_field = jnp.where(k_magnitude < cutoff_ratio * jnp.amax(k_magnitude), spectral_field, 0)
     return spectral_field
 
@@ -603,6 +604,7 @@ def Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t):
     u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
     return u
 
+@jax.jit
 def Dealiased_Strang_split(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW_t, f_s, dZ_t, k):
     u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
     u = Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k)
@@ -670,9 +672,17 @@ KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'sin'
 }
 
+KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
+    "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 1, "tmax": 1, "dt": 0.0001, "sigma": 1,
+    "ic": 'traveling_wave', "method": 'SS_ETDRK4_SSP33', 
+    "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
+}
+
+
 KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1e-4, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 128, "P": 1, "S": 0, "E": 2, "tmax": 10, "dt": 1e-5, "sigma": 0.0,
+    "xmin":0, "xmax":1, "nx": 128, "P": 1, "S": 0, "E": 3, "tmax": 10, "dt": 1e-5, "sigma": 0.1,
     "ic": 'gaussian', "method": 'SS_ETDRK4_SSP33', 
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
@@ -681,7 +691,9 @@ if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
     params = LinearAdvection_params#KDV_params_SALT#KDV_params_SALT
     params = KDV_params
-    params = KS_params
+    params = KS_params_SALT
+    params = KDV_params_traveling
+    #params = KS_params
 
 
     run_file_name = f'/Users/jmw/Documents/GitHub/Particle_Filter/config/auto_yaml/data.yml'
@@ -711,8 +723,6 @@ if __name__ == "__main__":
     stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
     stochastic_forcing_basis   = params["sigma"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
 
-
-
     key = jax.random.PRNGKey(0)
     key1, key2 = jax.random.split(key)
     dW = jax.random.normal(key1, shape=(nmax, E, P))
@@ -720,6 +730,9 @@ if __name__ == "__main__":
     print(stochastic_advection_basis.shape,dW.shape)
 
     for n in range(1, nmax):
+        beta = 3
+        U = initial_condition((x- 4*beta**2*dt*n + xmax)%(xmax*2) - xmax, 1, params["ic"])
+        #u = Dealiased_Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt, 0*stochastic_advection_basis,dW[n, :, :], stochastic_forcing_basis,dZ[n, :, :], k)
         u = IFRK4(u,E_weights,E_2,g,k,L)
         #u = SETDRK1(u, E, Q, LW, g, k, stochastic_advection_basis,dW[n, :, :], cutoff_ratio=2/3)
         #u = Dealiased_SETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt)
@@ -731,11 +744,15 @@ if __name__ == "__main__":
         #u, E, E_2, Q, f1, f2, f3, g
         #u_benchmark = Dealiased_IFSRK4(u_benchmark,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
         #u = Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt , stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, dZ[n, :, :])
+        
+        
         uu = uu.at[:, n, :].set(u)
         if n % 10 == 0:  # Plot every 10 steps for better performance
             plt.clf()
             for e in range(E):
                 plt.plot(x, u[e, :], label=f'Ensemble {e + 1}')
+                plt.plot(x, U[1, :], label=f'exact',c='k')
+
                 #plt.plot(x, u_benchmark[e, :], label=f'bench{e + 1}')
             plt.legend()
             plt.pause(0.001)

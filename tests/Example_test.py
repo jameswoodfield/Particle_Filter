@@ -94,8 +94,10 @@ def test_dealiasing_equivalence():
     u_squared = jnp.real(u)**2  # Compute u^2 in real space
     u_hat_squared = jnp.fft.fft(u_squared,axis=-1)  # Compute u^2 in spectral space
     k = 2 * jnp.pi * jnp.fft.fftfreq(N, dx)# (-N/2 to N/2) * 2 * pi, spaced by dx.
+    # we now compare the dealias_using_k functionality with the dealias function specified above.
     spectral_field_dealiased = dealias_using_k(u_hat_squared, k, cutoff_ratio=cutoff_ratio)
     spectral_field_dealiased_new = dealias(u_hat_squared, k, cutoff_ratio=cutoff_ratio)
+    assert jnp.allclose(spectral_field_dealiased, spectral_field_dealiased_new, atol=1e-16), "test equivalence of dealiasing methods"
     # Plot the dealiased fields
     # (u^2)_x = 2 * u * u_x 
     # u is sin(2 * pi * x), 
