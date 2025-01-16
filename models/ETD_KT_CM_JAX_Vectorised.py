@@ -29,30 +29,15 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
-        #self.create_basis()
-        if hasattr(self,'P'):
-            self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.P, self.params.Advection_basis_name)
-        else:
-            pass
-            #self.stochastic_advection_basis = jnp.zeros([self.P,self.x.shape[0]])
-        if hasattr(self,'S'):
-            self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.S, self.params.Forcing_basis_name)
-        else:
-            pass
-            # self.stochastic_forcing_basis = jnp.zeros([self.S,self.x.shape[0])
-            
-
-    def create_basis(self):
-        self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.P, self.params.Advection_basis_name)
-        self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.S, self.params.Forcing_basis_name)
-        
+        self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
+        self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
         
 
     def validate_params(self):
         if self.params.method not in ['StrangSplit_ETDRK4_SSP33',\
-                                     'Dealiased_StrangSplit_ETDRK4_SSP33',\
-                                     'ETDRK4',\
-                                     'Dealiased_ETDRK4']:
+                                      'Dealiased_StrangSplit_ETDRK4_SSP33',\
+                                      'ETDRK4',\
+                                      'Dealiased_ETDRK4']:
             raise ValueError(f"Method {self.params.method} not recognised")
         
         if self.params.method == 'StrangSplit_ETDRK4_SSP33':
@@ -89,7 +74,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                          self.f3, 
                          self.g, 
                          self.params.dt,
-                         self.stochastic_advective_basis,
+                         self.stochastic_advection_basis,
                          noise_advective,
                          self.stochastic_forcing_basis,
                          noise_forcing)
@@ -106,7 +91,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                          self.f3, 
                          self.g, 
                          self.params.dt,
-                         self.stochastic_advective_basis,
+                         self.stochastic_advection_basis,
                          noise_advective,
                          self.stochastic_forcing_basis,
                          noise_forcing,
@@ -225,7 +210,7 @@ def stochastic_basis_specifier(x, P, name):
         name (_type_): _name of ic_
 
     Raises:
-        ValueError: _description_
+        ValueError: _if name not specified_
 
     Returns:
         _array_: _(P,nx)_
@@ -239,10 +224,13 @@ def stochastic_basis_specifier(x, P, name):
         for p in range(P):
             ans = ans.at[p, :].set(jnp.cos((p+1)*2*jnp.pi*x))
     elif name == 'constant':
+        nx = len(x)
         ans = jnp.ones((P, nx))# each basis function is a constant
     else:
         raise ValueError(f"Stochastic basis {name} not recognised")
     return ans
+
+
 #### IFRK and IFSRK methods ####
 
 def IFRK4(u,E,E_2,g,k,L):
@@ -491,7 +479,6 @@ def Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3):
     v = jnp.fft.fft(u, axis=-1)
     # perhaps reasigning in the scope of the function allows faster access, requires testing.
     E=E;E_2=E_2;Q=Q;f1=f1;f2=f2;f3=f3;g=g;k=k;cutoff_ratio=cutoff_ratio
-
     def N(_v,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
         n = r*r
@@ -689,6 +676,9 @@ def Dealiased_StrangSplit_ETDRK4_SSP33(u, E, E_2, Q, f1, f2, f3, g, dt, xi_p, dW
     u = Dealiased_ETDRK4(u, E, E_2, Q, f1, f2, f3, g, k)
     u = SSP33(u,dt/2,xi_p,dW_t,f_s,dZ_t)
     return u
+
+
+
 
 # Simulation parameters 
 KS_params = {# KS equation, from Kassam Krefethen

@@ -47,7 +47,7 @@ class ParticleFilter:
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total):
-        # n_total is ?
+        # n_total is number of da steps?
         def scan_fn(val, i):
             particles, signal = val
             particles, signal, observation = self.run_step(particles, signal)
