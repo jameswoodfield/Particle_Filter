@@ -133,7 +133,5 @@ def test_Contour_integration_LR_computation():
     assert jnp.allclose(LR_1, LR_2, atol=1e-16), "test equivalence of LR_1 and LR_2"
 
 
-
-#test_initial_condition_sin()
 if __name__ == "__main__":
     pytest.main()
