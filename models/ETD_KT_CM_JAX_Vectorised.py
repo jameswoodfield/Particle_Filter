@@ -29,10 +29,23 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
+        #self.create_basis()
+        if hasattr(self,'P'):
+            self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.P, self.params.Advection_basis_name)
+        else:
+            pass
+            #self.stochastic_advection_basis = jnp.zeros([self.P,self.x.shape[0]])
+        if hasattr(self,'S'):
+            self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.S, self.params.Forcing_basis_name)
+        else:
+            pass
+            # self.stochastic_forcing_basis = jnp.zeros([self.S,self.x.shape[0])
+            
 
     def create_basis(self):
         self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.P, self.params.Advection_basis_name)
         self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.S, self.params.Forcing_basis_name)
+        
         
 
     def validate_params(self):
@@ -744,7 +757,7 @@ KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
 KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 3, "tmax": 1, "dt": 0.0001, "sigma": 1,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 3, "tmax": 1.0, "dt": 0.0001, "sigma": 1.0,
     "initial_condition": 'traveling_wave', "method": 'StrangSplit_ETDRK4_SSP33', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }

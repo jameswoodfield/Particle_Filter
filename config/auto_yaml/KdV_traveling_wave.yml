@@ -13,7 +13,7 @@ equation_name: KdV
 initial_condition: traveling_wave
 method: StrangSplit_ETDRK4_SSP33
 nx: 64
-sigma: 1
-tmax: 1
+sigma: 1.0
+tmax: 1.0
 xmax: 3.141592653589793
 xmin: -3.141592653589793
