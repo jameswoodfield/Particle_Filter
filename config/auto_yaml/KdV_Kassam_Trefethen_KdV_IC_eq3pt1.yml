@@ -1,5 +1,5 @@
 Advection_basis_name: constant
-E: 300
+E: 5
 Forcing_basis_name: none
 P: 1
 S: 0
@@ -8,12 +8,12 @@ c_1: 1
 c_2: 0.0
 c_3: 1
 c_4: 0.0
-dt: 0.0001
+dt: 2.0e-06
 equation_name: KdV
-initial_condition: traveling_wave
-method: StrangSplit_ETDRK4_SSP33
-nx: 64
-sigma: 1.0
-tmax: 1.0
+initial_condition: Kassam_Trefethen_KdV_IC_eq3pt1
+method: ETDRK4
+nx: 256
+sigma: 2
+tmax: 0.01
 xmax: 3.141592653589793
 xmin: -3.141592653589793
