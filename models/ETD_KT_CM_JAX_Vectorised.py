@@ -6,10 +6,15 @@ try:
     from .base import BaseModel
 except ImportError:
     from base import BaseModel
-from jax.config import config
+try:
+    from jax.config import config
+    config.update("jax_enable_x64", True)
+except ImportError:
+    jax.config.update("jax_enable_x64", True)
+
 import yaml
 
-config.update("jax_enable_x64", True)
+
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def __init__(self, params):
