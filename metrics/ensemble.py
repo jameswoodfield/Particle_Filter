@@ -14,6 +14,7 @@ def rmse(observations, ensemble):
     mean_rmse_over_space = jnp.mean(root_mean_square_error, axis=1)
     return mean_rmse_over_space
 
+
 def bias(signal, ensemble):
     ensemble_mean = jnp.mean(ensemble, axis=1)
     truths = signal.squeeze()

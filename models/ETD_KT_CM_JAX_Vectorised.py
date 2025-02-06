@@ -35,8 +35,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
-        self.stochastic_advection_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
-        self.stochastic_forcing_basis = self.params.sigma * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
+        self.stochastic_advection_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
+        self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
         
 
     def validate_params(self):
@@ -550,28 +550,28 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
 KS_params = {# KS equation, from Kassam Krefethen
     "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
-    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "sigma": 0.0,
+    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "noise_magnitude": 0.0,
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KS_params_SALT = {# KS equation, from Kassam Krefethen with transport noise
     "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
-    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 150, "dt": 0.25, "sigma": 0.001,
+    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 150, "dt": 0.25, "noise_magnitude": 0.001,
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
 KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 1, "dt": 0.001, "sigma": 0.0,
+    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 1, "dt": 0.001, "noise_magnitude": 0.0,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 10, "tmax": 1, "dt": 0.001, "sigma": 0.01,
+    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 10, "tmax": 1, "dt": 0.001, "noise_magnitude": 0.01,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -581,7 +581,7 @@ KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersio
 Heat_params = {# Heat equation. 
     "equation_name" : 'Heat', 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 16, "dt": 1 / 128,  "sigma": 0.1,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.1,
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -589,7 +589,7 @@ Heat_params = {# Heat equation.
 LinearAdvection_params = {# Linear Advection equation.
     "equation_name" : 'Linear-Advection', 
     "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 16, "dt": 1 / 128,  "sigma": 0.001,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.001,
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -597,7 +597,7 @@ LinearAdvection_params = {# Linear Advection equation.
 Burgers_params={# Burgers equation. 
     "equation_name" : 'Burgers', 
     "c_0": 0, "c_1": 1, "c_2": -1/256, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 0.5, "dt": 1 / 128,  "sigma": 0.001,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 0.5, "dt": 1 / 128,  "noise_magnitude": 0.001,
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -605,14 +605,14 @@ Burgers_params={# Burgers equation.
 KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.01, "dt": 2e-6, "sigma": 0.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.01, "dt": 2e-6, "noise_magnitude": 0.0,
     "initial_condition": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 2, "tmax": 0.01, "dt": 2e-6, "sigma": 2,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 2, "tmax": 0.01, "dt": 2e-6, "noise_magnitude": 2,
     "initial_condition": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -622,7 +622,7 @@ KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publ
 KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 300, "tmax": 1.0, "dt": 0.0001, "sigma": 1.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 300, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0,
     "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -630,7 +630,7 @@ KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/
 KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name": 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1e-4, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 128, "P": 1, "S": 0, "E": 3, "tmax": 10, "dt": 1e-5, "sigma": 0.1,
+    "xmin":0, "xmax":1, "nx": 128, "P": 1, "S": 0, "E": 3, "tmax": 10, "dt": 1e-5, "noise_magnitude": 0.1,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
@@ -675,8 +675,8 @@ if __name__ == "__main__":
     UU = jnp.zeros([E, nmax, nx])
     UU = UU.at[:, 0, :].set(u)
 
-    stochastic_advection_basis = params["sigma"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
-    stochastic_forcing_basis   = params["sigma"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
+    stochastic_advection_basis = params["noise_magnitude"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
+    stochastic_forcing_basis   = params["noise_magnitude"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
 
     key = jax.random.PRNGKey(0)
     key1, key2 = jax.random.split(key)
@@ -685,7 +685,7 @@ if __name__ == "__main__":
     print(stochastic_advection_basis.shape,dW.shape)
 
     # W = jnp.cumsum(dW, axis=0)
-    # W = jnp.sqrt(dt) * params["sigma"] * W
+    # W = jnp.sqrt(dt) * params["magnitude"] * W
     # plt.plot(W[:,0,0].T)
     # plt.show()
 
