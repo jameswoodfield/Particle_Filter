@@ -571,6 +571,8 @@ KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersio
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
 
+
+
 Heat_params = {# Heat equation. 
     "equation_name" : 'Heat', 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
@@ -633,10 +635,10 @@ if __name__ == "__main__":
     #params = LinearAdvection_params#KDV_params_SALT#KDV_params_SALT
     #params = KDV_params
     #params = KDV_params_noise
-    params = KDV_params_2
+    #params = Heat_params#KDV_params_2
     #params = KS_params_SALT
     #params = Burgers_params
-    #params = LinearAdvection_params
+    params = LinearAdvection_params
     #params = KDV_params_traveling
     #params = KS_params
     cwd = os.getcwd()
