@@ -47,7 +47,13 @@ class ParticleFilter:
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total):
-        # n_total is number of da steps?
+        """_summary: Runs the initial particles_
+
+        Args:
+            initial_particles (_type_): _description_
+            initial_signal (_type_): _description_
+            n_total (_type_): _n_total is the number of data assimilation proceedures._
+        """
         def scan_fn(val, i):
             particles, signal = val
             particles, signal, observation = self.run_step(particles, signal)
