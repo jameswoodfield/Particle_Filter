@@ -78,12 +78,12 @@ class ParticleFilterAll:
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
     def advance_signal(self, signal_position):
-        signal, signal_all = self.signal_model.run(signal_position, self.n_steps, None)
-        return signal, signal_all
+        _, signal = self.signal_model.run(signal_position, self.n_steps, None)
+        return signal
 
     def predict(self, particles):
-        prediction, prediction_all = self.fwd_model.run(particles[0], self.n_steps, None)
-        return prediction, prediction_all
+        _, prediction = self.fwd_model.run(particles, self.n_steps, None)
+        return prediction
 
     def observation_from_signal(self, signal, key):
         observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
@@ -102,9 +102,10 @@ class ParticleFilterAll:
         self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
         signal = self.advance_signal(signal)
         particles = self.predict(particles)
-        observation = self.observation_from_signal(signal[0], obs_key)
+        observation = self.observation_from_signal(signal[-1,:,:], obs_key)
 
-        particles = (self.update(particles[0], observation, sampling_key), particles[1])
+        updated_particles = self.update(particles[-1,:,:], observation, sampling_key)
+        particles = particles.at[-1,:,:].set(updated_particles)
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total):
@@ -116,9 +117,9 @@ class ParticleFilterAll:
             n_total (_type_): _n_total is the number of data assimilation proceedures._
         """
         def scan_fn(val, i):
-            particles, signal = val
-            particles, signal, observation = self.run_step(particles, signal)
-            return (particles, signal), (particles, signal, observation)
+            particles, signal= val
+            particles, signal, observation = self.run_step(particles[-1,:,:], signal[-1,:,:])
+            return (particles[-1,:,:][None,...], signal[-1,:,:][None,...]), (particles, signal, observation)
         
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
         return final, all
