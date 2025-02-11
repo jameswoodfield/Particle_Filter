@@ -32,6 +32,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
         self.nmax = round(self.params.tmax / self.params.dt)
+        #self.dt = self.params.tmax/self.nmax
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
@@ -701,7 +702,7 @@ if __name__ == "__main__":
         #u = Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u = Dealiased_IFSRK4(u,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
         # dealiasing is important for the IFSRK4 method.
-        u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #U = Dealiased_SETDRK4(U, E_1, E_2, Q, f1, f2, f3, g, k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         
         #u_benchmark = Dealiased_ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
