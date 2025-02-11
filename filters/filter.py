@@ -43,7 +43,7 @@ class ParticleFilter:
         particles = self.predict(particles)
         observation = self.observation_from_signal(signal, obs_key)
 
-        particles = (particles, observation, sampling_key)
+        particles = self.update(particles, observation, sampling_key)
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total):
