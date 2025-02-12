@@ -12,8 +12,8 @@ dt: 0.0078125
 equation_name: Linear-Advection
 initial_condition: sin
 method: Dealiased_SETDRK4
+noise_magnitude: 0.001
 nx: 256
-sigma: 0.001
 tmax: 16
 xmax: 1
 xmin: 0

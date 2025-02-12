@@ -111,6 +111,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
+        else:
+            noise_advective = noise
+            noise_forcing = noise
         #self.validate_params()
             
         if self.params.method == 'Dealiased_ETDRK4':
@@ -131,7 +134,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         return u_out
     
     def final_time_run(self, initial_state, n_steps, noise):
-        """_run whilst only giving final timestep_
+        """_run whilst only giving final timestep
+            this approach does not hold data in local memory.
+            _
 
         Args:
             initial_state (_type_): _description_
@@ -199,7 +204,7 @@ def initial_condition(x, E , name):
     elif name == 'traveling_wave':
         beta = 3
         ans  =  12 * beta**2 * jnp.cosh( beta * ( x ) )**-2
-
+        ans =  jnp.where(ans<1e-7,0,ans)#
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
@@ -623,7 +628,7 @@ KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publ
 KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 300, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 30, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0,
     "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
