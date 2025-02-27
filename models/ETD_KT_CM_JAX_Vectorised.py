@@ -32,6 +32,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
         self.nmax = round(self.params.tmax / self.params.dt)
+        self.nt = self.nmax
         #self.dt = self.params.tmax/self.nmax
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
