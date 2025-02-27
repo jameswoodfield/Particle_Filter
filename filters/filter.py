@@ -26,7 +26,7 @@ class ParticleFilter:
 
     def observation_from_signal(self, signal, key):
         observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
-        observation = jnp.zeros_like(signal)
+        observation = jnp.ones_like(signal) * jnp.nan
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
 
