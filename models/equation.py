@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
 from .base import BaseModel
+from .ETD_KT_CM_JAX_Vectorised import ETD_KT_CM_JAX_Vectorised
+
+Solver1D = type("Solver1D", (ETD_KT_CM_JAX_Vectorised,), {})
 
 @dataclass(frozen=True)
 class Equation1D(BaseModel):
