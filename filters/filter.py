@@ -62,8 +62,7 @@ class ParticleFilter:
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
         return final, all
 
-
-# Just a test of a very basic filter
+# this class also outputs the solution when data is not available. 
 class ParticleFilterAll:
 
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
