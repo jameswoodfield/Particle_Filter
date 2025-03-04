@@ -17,6 +17,9 @@ These notebooks indicate a qualitive difference between the ability of the parti
 This is interesting in light of the Low dimensional behaviour of the KS equation, and the fact that the PF filter typically fails due to dimensionality of the state space being a challenge. The results in this example indicating that the equations sensitivity to initial condition and stochastic pertubation makes the KS more challenging. 
 
 
+### Example 4: 
+
+
 ### Example 5: 
 These two notebooks contain the temporal and spatial convergence of a pathwise stochastic travelling wave under constant noise. To demonstrate spectral convergence is difficult due to the spatial accuracy being near machine precision at moderate resolution, we have lowered the timestep drastically, but increased the spatial step. The temporal convergence is computed strongly, using a stochastic travelling wave. 
 
