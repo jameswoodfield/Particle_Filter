@@ -4,7 +4,7 @@
 <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
 
 ### Example 1: KS EQUATION
-In this .ipybn we run the Deterministic Kuramoto-Sivashinsky equation under the initial conditions specified in Kassam and Trefethen. 
+In this .ipynb we run the Deterministic Kuramoto-Sivashinsky equation under the initial conditions specified in Kassam and Trefethen. 
 
 ### Example 2: 
 In these two notebooks: We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under initial condition pertubations, and observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$. 
@@ -16,6 +16,8 @@ These notebooks indicate a qualitive difference between the ability of the parti
 
 This is interesting in light of the Low dimensional behaviour of the KS equation, and the fact that the PF filter typically fails due to dimensionality of the state space being a challenge. The results in this example indicating that the equations sensitivity to initial condition and stochastic pertubation makes the KS more challenging. 
 
+### Example 3a:
+In this notebook we demonstrate how to use the 'ParticleFilterAll" class to run a particle filter and output the full trajectories, including the timepoints in between assimilation times. 
 
 ### Example 4: 
 
