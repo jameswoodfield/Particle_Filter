@@ -14,9 +14,9 @@ except ImportError:
 
 import yaml
 
-
-
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
+    from jax.config import config
+    config.update("jax_enable_x64", True)
     def __init__(self, params):
         self.params = params
         self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
@@ -61,7 +61,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         dW = jax.random.normal(key1, shape=(n_steps, self.params.E, self.params.P))
         dZ = jax.random.normal(key2, shape=(n_steps, self.params.E, self.params.S))
         return dW, dZ
-    
+    ###########################
+    #  Time stepping methods  #
+    ###########################
     def step_Dealiased_ETDRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_ETDRK4(u, 
@@ -92,20 +94,37 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                             )
         return u
     
-    # def Dealiased_IFSRK4(self, initial_state, noise_advective, noise_forcing):
-    #     u = initial_state
-    #     u = Dealiased_IFSRK4(u,
-    #                          self.E_weights,
-    #                          self.E_2,
-    #                          self.g,
-    #                          self.k,
-    #                          self.L,
-    #                          self.stochastic_advection_basis,
-    #                          noise_advective,
-    #                          self.params.dt
-    #                          )
-    #     return u
-
+    def Dealiased_IFSRK4(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_IFSRK4(u,
+                             self.E_weights,
+                             self.E_2,
+                             self.g,
+                             self.k,
+                             self.L,
+                             self.stochastic_advection_basis,
+                             noise_advective,
+                             self.params.dt
+                             )
+        return u
+    
+    def Dealiased_eSSPIFSRK_P_33(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_eSSPIFSRK_P_33(u,
+                                     self.E_weights,
+                                     self.E_2,
+                                     self.g,
+                                     self.k,
+                                     self.L,
+                                     self.stochastic_advection_basis,
+                                     noise_advective,
+                                     self.params.dt
+                                     )
+        return u
+    
+    ###########################
+    ##    Running options    ##
+    ###########################
     def run(self, initial_state, n_steps, noise):
 
         if noise is None:
@@ -121,10 +140,17 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             def scan_fn(y, i):
                 y_next = self.step_Dealiased_ETDRK4(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
-            
         elif self.params.method == 'Dealiased_SETDRK4':
             def scan_fn(y,i):
                 y_next = self.step_Dealiased_SETDRK4(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
+        elif self.params.method == 'Dealiased_IFSRK4':
+            def scan_fn(y,i):
+                y_next = self.Dealiased_IFSRK4(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
+        elif self.params.method == 'Dealiased_eSSPIFSRK_P_33':
+            def scan_fn(y,i):
+                y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
             
         else:
@@ -164,6 +190,15 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         elif self.params.method == 'Dealiased_SETDRK4':
             def scan_fn(y,i):
                 y_next = self.step_Dealiased_SETDRK4(y, noise_advective[i], noise_forcing[i])
+                return y_next, None
+        
+        elif self.params.method == 'Dealiased_IFSRK4':
+            def scan_fn(y,i):
+                y_next = self.Dealiased_IFSRK4(y, noise_advective[i], noise_forcing[i])
+                return y_next, None
+        elif self.params.method == 'Dealiased_eSSPIFSRK_P_33':
+            def scan_fn(y,i):
+                y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
                 return y_next, None
             
         else:
@@ -205,7 +240,15 @@ def initial_condition(x, E , name):
     elif name == 'traveling_wave':
         beta = 3
         ans  =  12 * beta**2 * jnp.cosh( beta * ( x ) )**-2
-        ans =  jnp.where(ans<1e-7,0,ans)#
+        ans =  jnp.where(ans<1e-7,0,ans)# remove small values little bit wrong.
+    elif name == 'new_traveling_wave':
+        beta = 6*6 # ensure that this is used for x - beta t traveling wave solution. 
+        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
+        #ans =  jnp.where(ans<1e-8,0,ans)#
+    elif name == 'steep_traveling_wave':
+        beta = 8*8 # ensure that this is used for x - beta t traveling wave solution. 
+        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
+
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
@@ -264,17 +307,8 @@ def IFRK4(u,E,E_2,g):
     v = jnp.fft.fft(u,axis=1)
 
     def N(_in,g):
-        """_Nonlinearity computation in real space_
-
-        Args:
-            _in (_type_): _description_
-            g (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
+        """_Nonlinearity computation in real space_"""
         return g * jnp.fft.fft(jnp.real(jnp.fft.ifft(_in,axis=-1))**2, axis=-1)
-
     a = N(v,g)
     u1 = E_2*(v + a/2)
     b = N(u1,g)
@@ -292,13 +326,13 @@ def IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt):
     dW_t = dW_t*jnp.sqrt(dt) / dt 
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t) # xi = (P,nx), dW_t = (E,P) so RVF = (E,nx)
     v = jnp.fft.fft(u,axis=1)
-    g = g*dt#-.5j*dt*k
+    g = g*dt# note g = -.5j*dt*k,
     #-0.5j * k * params["c_1"]
     # E = jnp.exp(dt * L)
     # E_2 = jnp.exp(dt * L / 2)
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )# convert to real space
-        n = (u + RVF)*u # nonlinearity in real space
+        n = (u + 2 * RVF)*u # nonlinearity in real space
         return g * jnp.fft.fft(n , axis=-1)# compute derivative in spectral space
 
     a  = N(v,RVF,g)
@@ -324,7 +358,7 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     # E_2 = jnp.exp(dt * L / 2)
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + _RVF)*r
+        n = (r + 2*_RVF)*r
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     a = N(v,RVF,g)
@@ -349,7 +383,7 @@ def Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + _RVF)*r
+        n = (r + 2*_RVF)*r
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
@@ -368,7 +402,7 @@ def Dealiased_eSSPIFSRK_P_22(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + _RVF)*r
+        n = (r + 2*_RVF)*r
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
@@ -390,7 +424,7 @@ def Dealiased_eSSPIFSRK_P_33(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + _RVF)*r
+        n = (r + 2*_RVF)*r
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
@@ -441,14 +475,14 @@ def Kassam_Trefethen(dt, L, nx, M=64, R=1):
         R (int, optional): _Radius of circle used_. Defaults to 1.
 
     Returns:
-        E : 
-        E_2 :
-        Q :
+        E : computed manually
+        E_2 : computed manually
+        Q : approximation of (e^{z}-1)/z. 
         f1 : _See eq2.5 in KassamTrefethen, alpha=f1 _
         f2 :  beta=f2
         f3 :  gamma=f3._
     """
-    E_1 = jnp.exp(dt * L) 
+    E_1 = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * L[:, None] + r[None, :]
@@ -519,7 +553,7 @@ def Dealiased_SETDRK4(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, dt, cutoff_rat
     v = jnp.fft.fft(u, axis=1)
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + _RVF)*r
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     Nv = N(v,RVF,g)
@@ -557,7 +591,7 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
 KS_params = {# KS equation, from Kassam Krefethen
     "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
-    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150, "dt": 0.25 , "noise_magnitude": 0.0,
+    "xmin": 0., "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150., "dt": 0.25 , "noise_magnitude": 0.0,
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -623,7 +657,6 @@ KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publ
 }
 
 
-
 KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
@@ -640,6 +673,14 @@ KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
 
+KDV_params_exact_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
+    "equation_name" : 'KdV', 
+    "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 1, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0,
+    "initial_condition": 'new_traveling_wave', "method": 'Dealiased_SETDRK4', 
+    "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
+}
+
 if __name__ == "__main__":
     jax.config.update("jax_enable_x64", True)
     #params = LinearAdvection_params#KDV_params_SALT#KDV_params_SALT
@@ -648,8 +689,8 @@ if __name__ == "__main__":
     #params = Heat_params#KDV_params_2
     #params = KS_params_SALT
     #params = Burgers_params
-    params = LinearAdvection_params
-    #params = KDV_params_traveling
+    #params = LinearAdvection_params
+    params = KDV_params_traveling
     #params = KS_params
     cwd = os.getcwd()
 
@@ -659,7 +700,8 @@ if __name__ == "__main__":
         yaml.dump(params, outfile, default_flow_style=False)
     # params = LinearAdvection_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
-    
+    E=1
+    #print(dt)
     #dx = (xmax - xmin) / nx
     #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
     xf = jnp.linspace(xmin, xmax, nx+1)
@@ -704,11 +746,10 @@ if __name__ == "__main__":
         #u = SETDRK1(u, E, Q, LW, g, k, stochastic_advection_basis,dW[n, :, :], cutoff_ratio=2/3)
         #u = Dealiased_SETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt)
         #u = Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_IFSRK4(u,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
+        #u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
         # dealiasing is important for the IFSRK4 method.
         u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #U = Dealiased_SETDRK4(U, E_1, E_2, Q, f1, f2, f3, g, k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        
+        #u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u_benchmark = Dealiased_ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
         #u, E, E_2, Q, f1, f2, f3, g
         #u_benchmark = Dealiased_IFSRK4(u_benchmark,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
