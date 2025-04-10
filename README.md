@@ -26,7 +26,7 @@ In this notebook we demonstrate how to use the 'ParticleFilterAll' class to run 
 These notebooks demonstrate temporal and spatial convergence using a pathwise stochastic travelling wave solution to the KdV equation under constant noise. 
 
 <img src="Saving/convergence_space.png" alt="drawing" width="200"/>
-<img src="Saving/Temporal_convergence_Refined" alt="drawing" width="200"/>
+<img src="Saving/Temporal_convergence_Refined.png" alt="drawing" width="200"/>
 Example_5_KDV_Temporal_Convergence_dW_refined.ipybn, also compares the exponential time differencing approach CSETDRK44, with a stochastic integrating factor method SIFRK44. Showing in this case the SETD scheme can be run at much larger timestep, and have much lower error. 
 
 ### Example 6: 
