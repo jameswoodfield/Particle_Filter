@@ -330,8 +330,8 @@ def IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt):
     #-0.5j * k * params["c_1"]
     # E = jnp.exp(dt * L)
     # E_2 = jnp.exp(dt * L / 2)
-    def N(_v,_RVF,g):
-        r = jnp.real( jnp.fft.ifft( _v ) )# convert to real space
+    def N(v,RVF,g):
+        r = jnp.real( jnp.fft.ifft( v ) )# convert to real space
         n = (u + 2 * RVF)*u # nonlinearity in real space
         return g * jnp.fft.fft(n , axis=-1)# compute derivative in spectral space
 
@@ -358,7 +358,7 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     # E_2 = jnp.exp(dt * L / 2)
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     a = N(v,RVF,g)
@@ -383,7 +383,7 @@ def Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
@@ -402,7 +402,7 @@ def Dealiased_eSSPIFSRK_P_22(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
@@ -424,7 +424,7 @@ def Dealiased_eSSPIFSRK_P_33(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
