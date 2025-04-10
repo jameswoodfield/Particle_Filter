@@ -1,7 +1,5 @@
 # Particle Filter
 
-<img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
-<img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
 
 ### Example 1: KS EQUATION
 In this .ipynb we run the Deterministic Kuramoto-Sivashinsky equation under the initial conditions specified in Kassam and Trefethen. 
@@ -24,6 +22,8 @@ In this notebook we demonstrate how to use the 'ParticleFilterAll' class to run 
 
 ### Example 5: 
 These notebooks demonstrate temporal and spatial convergence using a pathwise stochastic travelling wave solution to the KdV equation under constant noise. 
+<img src="Saving/Analytic_Steep_Travelling_Wave.png" alt="drawing" width="200"/>
+
 
 <img src="Saving/convergence_space.png" alt="drawing" width="200"/>
 <img src="Saving/Temporal_convergence_Refined.png" alt="drawing" width="200"/>
@@ -31,3 +31,8 @@ Example_5_KDV_Temporal_Convergence_dW_refined.ipybn, also compares the exponenti
 
 ### Example 6: 
 These notebooks simply visualise the deterministic solution, for the KdV and KS equation. 
+
+<img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
+<img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
+<img src="Saving/KdV_High_res.png" alt="drawing" width="200"/>
+<img src="Saving/KS_Waterfall.png" alt="drawing" width="200"/>
