@@ -37,22 +37,22 @@ These notebooks visualise the deterministic solution, for the KdV and KS equatio
 <div style="display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap;">
     <div style="text-align: center;">
         <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
-        <p>Waterfall plot: KS Equation</p>
+        <p style="margin-top: 5px;">Figure 1: Waterfall plot - KS Equation</p>
     </div>
     <div style="text-align: center;">
         <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
-        <p>Waterfall plot: KdV Equation</p>
+        <p style="margin-top: 5px;">Figure 2: Waterfall plot - KdV Equation</p>
     </div>
 </div>
 
 <div style="display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap;">
     <div style="text-align: center;">
         <img src="Saving/KS_High_res.png" alt="drawing" width="200"/>
-        <p>High Res plot: KS Equation</p>
+        <p style="margin-top: 5px;">Figure 3: High Res plot - KS Equation</p>
     </div>
     <div style="text-align: center;">
         <img src="Saving/KdV_High_res.png" alt="drawing" width="200"/>
-        <p>High Res plot: KdV Equation</p>
+        <p style="margin-top: 5px;">Figure 4: High Res plot - KdV Equation</p>
     </div>
 </div>
 
