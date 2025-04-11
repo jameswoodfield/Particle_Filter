@@ -34,28 +34,26 @@ Example_5_KDV_Temporal_Convergence_dW_refined.ipybn, also compares the exponenti
 
 ### Example 6: 
 These notebooks visualise the deterministic solution, for the KdV and KS equation. 
-
-<div style="display: flex; flex-direction: row; gap: 10px;">
-    <figure>
+<div style="display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap;">
+    <div style="text-align: center;">
         <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
-        <figcaption>Waterfall plot: KS Equation</figcaption>
-    </figure>
-    <figure>
+        <p>Waterfall plot: KS Equation</p>
+    </div>
+    <div style="text-align: center;">
         <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
-        <figcaption>Waterfall plot: KdV Equation</figcaption>
-    </figure>
+        <p>Waterfall plot: KdV Equation</p>
+    </div>
 </div>
 
-<div style="display: flex; flex-direction: row; gap: 10px;">
-    <figure>
+<div style="display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap;">
+    <div style="text-align: center;">
         <img src="Saving/KS_High_res.png" alt="drawing" width="200"/>
-        <figcaption>High Res plot: KS Equation</figcaption>
-    </figure>
-    <figure>
+        <p>High Res plot: KS Equation</p>
+    </div>
+    <div style="text-align: center;">
         <img src="Saving/KdV_High_res.png" alt="drawing" width="200"/>
-        <figcaption>High Res plot: KdV Equation</figcaption>
-    </figure>
+        <p>High Res plot: KdV Equation</p>
+    </div>
 </div>
-
 
 
