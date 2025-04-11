@@ -30,14 +30,32 @@ These notebooks demonstrate temporal and spatial convergence using a pathwise st
 </div>
 
 
-<img src="Saving/convergence_space.png" alt="drawing" width="200"/>
-<img src="Saving/Temporal_convergence_Refined.png" alt="drawing" width="200"/>
 Example_5_KDV_Temporal_Convergence_dW_refined.ipybn, also compares the exponential time differencing approach CSETDRK44, with a stochastic integrating factor method SIFRK44. Showing in this case the SETD scheme can be run at much larger timestep, and have much lower error. 
 
 ### Example 6: 
-These notebooks simply visualise the deterministic solution, for the KdV and KS equation. 
+These notebooks visualise the deterministic solution, for the KdV and KS equation. 
 
-<img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
-<img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
-<img src="Saving/KdV_High_res.png" alt="drawing" width="200"/>
-<img src="Saving/KS_High_res.png" alt="drawing" width="200"/>
+<div style="display: flex; flex-direction: row; gap: 10px;">
+    <figure>
+        <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
+        <figcaption>Waterfall plot: KS Equation</figcaption>
+    </figure>
+    <figure>
+        <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
+        <figcaption>Waterfall plot: KdV Equation</figcaption>
+    </figure>
+</div>
+
+<div style="display: flex; flex-direction: row; gap: 10px;">
+    <figure>
+        <img src="Saving/KS_High_res.png" alt="drawing" width="200"/>
+        <figcaption>High Res plot: KS Equation</figcaption>
+    </figure>
+    <figure>
+        <img src="Saving/KdV_High_res.png" alt="drawing" width="200"/>
+        <figcaption>High Res plot: KdV Equation</figcaption>
+    </figure>
+</div>
+
+
+
