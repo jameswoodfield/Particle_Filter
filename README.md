@@ -22,7 +22,12 @@ In this notebook we demonstrate how to use the 'ParticleFilterAll' class to run 
 
 ### Example 5: 
 These notebooks demonstrate temporal and spatial convergence using a pathwise stochastic travelling wave solution to the KdV equation under constant noise. 
-<img src="Saving/Analytic_Steep_Travelling_Wave.png" alt="drawing" width="200"/>
+
+<div style="display: flex; flex-direction: row; gap: 10px;">
+    <img src="Saving/convergence_space.png" alt="drawing" width="200"/>
+    <img src="Saving/Temporal_convergence_Refined.png" alt="drawing" width="200"/>
+    <img src="Saving/Analytic_Steep_Travelling_Wave.png" alt="drawing" width="200"/>
+</div>
 
 
 <img src="Saving/convergence_space.png" alt="drawing" width="200"/>
@@ -35,4 +40,4 @@ These notebooks simply visualise the deterministic solution, for the KdV and KS 
 <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>
 <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>
 <img src="Saving/KdV_High_res.png" alt="drawing" width="200"/>
-<img src="Saving/KS_Waterfall.png" alt="drawing" width="200"/>
+<img src="Saving/KS_High_res.png" alt="drawing" width="200"/>
