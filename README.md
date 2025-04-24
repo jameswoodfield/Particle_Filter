@@ -5,7 +5,7 @@
 In this .ipynb we run the Deterministic Kuramoto-Sivashinsky equation under the initial conditions specified in Kassam and Trefethen. 
 
 ### Example 2: 
-In these two notebooks: We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under initial condition pertubations, and observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$. 
+In these two notebooks: We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of order $10^{-8}$, and observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively.  
 
 ### Example 3: 
 In these two notebooks: We demonstrate how to run a particle filter with the stochastic KS and KdV equation under transport noise. We include subsampled data in both space and time. 
