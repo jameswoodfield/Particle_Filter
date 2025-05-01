@@ -6,16 +6,17 @@ try:
     from .base import BaseModel
 except ImportError:
     from base import BaseModel
-try:
-    from jax.config import config
-    config.update("jax_enable_x64", True)
-except ImportError:
-    jax.config.update("jax_enable_x64", True)
-
+# try:
+#     from jax.config import config
+#     config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
+print(jax.config.read("jax_enable_x64"))
 import yaml
+import os
+os.environ["JAX_ENABLE_X64"] = "true"
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
-    from jax.config import config
+    from jax import config
     config.update("jax_enable_x64", True)
     def __init__(self, params):
         self.params = params
@@ -122,6 +123,18 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                                      )
         return u
     
+    def Dealiased_RK4(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_RK4(u,
+                 self.L,
+                 self.g,
+                 self.k,
+                 self.stochastic_advection_basis,
+                 noise_advective,
+                 self.params.dt
+                 )
+        return u
+    
     ###########################
     ##    Running options    ##
     ###########################
@@ -151,6 +164,10 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         elif self.params.method == 'Dealiased_eSSPIFSRK_P_33':
             def scan_fn(y,i):
                 y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
+                return y_next, y_next
+        elif self.params.method == 'Dealiased_RK4':
+            def scan_fn(y,i):
+                y_next = self.Dealiased_RK4(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
             
         else:
@@ -199,6 +216,10 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         elif self.params.method == 'Dealiased_eSSPIFSRK_P_33':
             def scan_fn(y,i):
                 y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
+                return y_next, None
+        elif self.params.method == 'Dealiased_RK4':
+            def scan_fn(y,i):
+                y_next = self.Dealiased_RK4(y, noise_advective[i], noise_forcing[i])
                 return y_next, None
             
         else:
@@ -287,6 +308,37 @@ def stochastic_basis_specifier(x, P, name):
     else:
         raise ValueError(f"Stochastic basis {name} not recognised")
     return ans
+
+###----------------------------------------------------------####
+###--------------------------SRK-----------------------------####
+###----------------------------------------------------------####
+
+@jax.jit
+def Dealiased_RK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+
+    dW_t = dW_t * jnp.sqrt(dt) / dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u, axis=1)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    def L_function(_v,L):
+        return L * _v
+    
+    def f(_v):
+        return (L_function(_v, L) + N(_v, RVF, g))
+
+    k1 = f(v)
+    k2 = f(v + dt * k1 / 2)
+    k3 = f(v + dt * k2 / 2)
+    k4 = f(v + dt * k3)
+    v_next = v + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+    u_next = jnp.real( jnp.fft.ifft(v_next, axis=-1) )
+    return u_next
 
 ####----------------------------------------------------------####
 ####-----------------------SIFRK methods----------------------####
@@ -735,7 +787,8 @@ if __name__ == "__main__":
     # W = jnp.sqrt(dt) * params["magnitude"] * W
     # plt.plot(W[:,0,0].T)
     # plt.show()
-
+    dt = 0.00001
+    #L=-L
     for n in range(1, nmax):
         beta = 3
         # some number instead of 0.125. 
@@ -748,7 +801,9 @@ if __name__ == "__main__":
         #u = Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
         # dealiasing is important for the IFSRK4 method.
-        u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        
+        u = RK4(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u_benchmark = Dealiased_ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
         #u, E, E_2, Q, f1, f2, f3, g
