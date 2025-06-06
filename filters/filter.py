@@ -337,7 +337,7 @@ class ParticleFilter_tempered_jittered:
             log_weights = v_get_log_weight(particles_observed*delta_beta, observation*delta_beta, self.sigma)
             ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(log_weights))
             jitter_key, key = jax.random.split(key)
-            jitter = 0.0 * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.)
+            jitter = 0.001 * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.)
             particles = particles + jitter
             particles = self.resample(particles, jax.nn.softmax(log_weights), key)
 
