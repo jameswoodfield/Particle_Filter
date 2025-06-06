@@ -361,6 +361,7 @@ def IFRK4(u,E,E_2,g):
     def N(_in,g):
         """_Nonlinearity computation in real space_"""
         return g * jnp.fft.fft(jnp.real(jnp.fft.ifft(_in,axis=-1))**2, axis=-1)
+    
     a = N(v,g)
     u1 = E_2*(v + a/2)
     b = N(u1,g)
