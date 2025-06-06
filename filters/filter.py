@@ -95,18 +95,19 @@ class ParticleFilterTJ:
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        particles = self.resample(particles, jax.nn.softmax(log_weights), key)
+        pos_out, _, log_weights = self.tj(particles_observed, log_weights, observation, self.n_particles)
+        particles = self.resample(pos_out[-1], jax.nn.softmax(log_weights), key)
         return particles
 
-    
-    def tj(positions_0, weights_0, observation, nens):
+    def tj(self, positions_0, log_weights_0, observation, nens):
+        print("TJ called")
         jitter_param = 0.1
 
         pos_out = []
         pos_out.append(positions_0)
 
         key = jax.random.PRNGKey(10)
-        ess = get_rel_ess_from_normalized_weights(weights_0)
+        ess = get_rel_ess_from_normalized_weights(jnp.exp(log_weights_0))
         print(ess)
         rel_ess_target = 0.8
         phi = 0.
@@ -114,7 +115,7 @@ class ParticleFilterTJ:
         iterations = 0
         parents = jnp.arange(nens, dtype=jnp.int32)
         origin = jnp.arange(nens, dtype=jnp.int32)
-        log_weights = jnp.log(weights_0)
+        log_weights = log_weights_0
         positions = positions_0
         while ess < rel_ess_target:
             branching_key, key = jax.random.split(key)
@@ -182,21 +183,21 @@ class ParticleFilterTJ:
         particles = self.update(particles, observation, sampling_key)
         return particles, signal, observation
 
-    def run(self, initial_particles, initial_signal, n_total):
-        """_summary: Runs the initial particles_
+    # def run(self, initial_particles, initial_signal, n_total):
+    #     """_summary: Runs the initial particles_
 
-        Args:
-            initial_particles (_type_): _description_
-            initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
-        """
-        def scan_fn(val, i):
-            particles, signal = val
-            particles, signal, observation = self.run_step(particles, signal)
-            return (particles, signal), (particles, signal, observation)
+    #     Args:
+    #         initial_particles (_type_): _description_
+    #         initial_signal (_type_): _description_
+    #         n_total (_type_): _n_total is the number of data assimilation proceedures._
+    #     """
+    #     def scan_fn(val, i):
+    #         particles, signal = val
+    #         particles, signal, observation = self.run_step(particles, signal)
+    #         return (particles, signal), (particles, signal, observation)
         
-        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
-        return final, all
+    #     final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+    #     return final, all
 
 # this class also outputs the solution when data is not available. 
 class ParticleFilterAll:
