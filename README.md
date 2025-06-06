@@ -47,3 +47,9 @@ These notebooks visualise the deterministic solution, for the KdV and KS equatio
 | KS-spacetime | KdV-spacetime |
 | <img src="Saving/KS_High_res.png" alt="drawing" width="200"/>| <img src="Saving/KdV_High_res.png" alt="drawing" width="200"/> |
 
+
+
+### Example 7: 
+These notebooks visualise the effect of ensemble size on the KS and KDV equation, under the standard bootstrap particle filter.
+
+We see that the Particle filter diverges in the case of KS and does not recover in the case of increasing the ensemble size. In the case of KdV increasing the ensemble size does decrease the error. 
