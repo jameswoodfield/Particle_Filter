@@ -100,6 +100,7 @@ class ParticleFilterTJ:
         return particles
 
     def tj(self, positions_0, log_weights_0, observation, nens):
+        print("TJ called")
         jitter_param = 0.1
 
         pos_out = []
