@@ -19,6 +19,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     from jax import config
     config.update("jax_enable_x64", True)
     def __init__(self, params):
+        from jax import config
+        config.update("jax_enable_x64", True)
         self.params = params
         self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
         self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
@@ -139,7 +141,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     ##    Running options    ##
     ###########################
     def run(self, initial_state, n_steps, noise):
-
+        from jax import config
+        config.update("jax_enable_x64", True)
         if noise is None:
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
@@ -269,7 +272,9 @@ def initial_condition(x, E , name):
     elif name == 'steep_traveling_wave':
         beta = 8*8 # ensure that this is used for x - beta t traveling wave solution. 
         ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
-
+    elif name == 'very_steep_traveling_wave':
+        beta = 9*9
+        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))

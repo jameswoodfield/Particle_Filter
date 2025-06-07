@@ -32,7 +32,14 @@ Convergence - plots
 |  <img src="Saving/convergence_space.png" alt="drawing" width="200"/> | <img src="Saving/Temporal_convergence_Refined.png" alt="drawing" width="200"/> |
 
 
+Example_5_KdV_Temporal_Convergence_dW_refined_Limit_of_small_noise.ipynb
 
+contains temporal convergence in the limit of vanishing noise, showing strong order 2 (for commutative noise) becoming strong order 4. This experiment indicates benifit to capturing higher order deterministic term. 
+
+Convergence - plots
+| Temporal convergence  | Temporal convergence |
+| ------------- | ------------- |
+|  <img src="Saving/Temporal_convergence_2_small_noise.png" alt="drawing" width="200"/> | <img src="Saving/Temporal_convergence_RK4_IFRK4_ETDRK4.png" alt="drawing" width="200"/> |
 
 
 
