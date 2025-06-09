@@ -5,15 +5,22 @@
 In this .ipynb we demonstate running the Deterministic Kuramoto-Sivashinsky equation under the initial conditions specified in Kassam and Trefethen. 
 
 ### Example 2: 
-In these two notebooks: We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of order $10^{-8}$, and 
+In these two notebooks (Example_2_KdV_perturbed.ipybn, Example_2_KS_perturbed.ipybn). We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of order $10^{-8}$, and compute 
+$$
+\begin{align}
+\frac{||u_1 - u_2||_{2}}{||u_2||_{2}}
+\end{align}
+$$
 
-Sensitivities
+
+We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV has linear growth, KS has exponential growth.
 
 | KdV   | KS  |
 | ------------- | ------------- |
+|  <img src="Saving/KdV_sensitivity.png" alt="drawing" width="200"/> | <img src="Saving/KS_sensitivity.png" alt="drawing" width="200"/> |
+| Log-log | Log log  |
 |  <img src="Saving/KdV_ic_pertubation_error.png" alt="drawing" width="200"/> | <img src="Saving/KS_ic_pertubation_error.png" alt="drawing" width="200"/> |
 
-we observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV exhibits linear growth of the difference in solution, $||u_1 - u_2||_{2}/||u_2||_2$
 
 
 ### Example 3: 

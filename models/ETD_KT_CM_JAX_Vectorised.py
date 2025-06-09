@@ -132,8 +132,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     ##    Running options    ##
     ###########################
     def run(self, initial_state, n_steps, noise):
-        from jax import config
-        config.update("jax_enable_x64", True)
+        
         if noise is None:
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
@@ -143,6 +142,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             noise_forcing = noise
         self.validate_params()
         self.timestep_validatate()    
+
         if self.params.method == 'Dealiased_ETDRK4':
             def scan_fn(y, i):
                 y_next = self.step_Dealiased_ETDRK4(y, noise_advective[i], noise_forcing[i])

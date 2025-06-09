@@ -83,6 +83,10 @@ def systematic_resample_2(particles, weights, key):
 def no_resampling(particles, weights, key):
     return particles
 
+@register_resampler('none')
+def none(particles, weights, key):
+    return particles
+
 @register_resampler('default')
 def default_resampler(particles, weights, key):
     """Default resampler from Dan's book (need to find out if it has a name...)"""
