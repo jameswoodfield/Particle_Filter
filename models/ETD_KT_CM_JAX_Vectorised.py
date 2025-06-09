@@ -16,12 +16,10 @@ import os
 os.environ["JAX_ENABLE_X64"] = "true"
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
-    from jax import config
-    config.update("jax_enable_x64", True)
+    
     def __init__(self, params):
-        from jax import config
-        config.update("jax_enable_x64", True)
         self.params = params
+
         self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
         self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
         self.dx = self.x[1]-self.x[0] # cell width
@@ -34,9 +32,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.g = -0.5j * self.k * self.params.c_1
 
         self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
-        self.nmax = round(self.params.tmax / self.params.dt)
-        self.nt = self.nmax
-        #self.dt = self.params.tmax/self.nmax
+        
         self.noise_key = jax.random.PRNGKey(0)
         self.key1, self.key2 = jax.random.split(self.noise_key)
 
@@ -44,20 +40,15 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
         
 
-    def validate_params(self):
-        if self.params.method not in ['Dealiased_ETDRK4','step_Dealiased_SETDRK4']:
-            raise ValueError(f"Method {self.params.method} not recognised")
-        
-        if self.params.method == 'Dealiased_ETDRK4':
-            if self.params.P != 0 or self.params.S != 0:
-                raise ValueError(f"Method {self.params.method} requires P and S to be 0")
-            
-        if self.params.method == 'Dealiased_SETDRK4':
-            pass
+    def timestep_validatate(self):
+        if self.params.dt <= 0:
+            raise ValueError(f"Time step dt must be positive, got {self.params.dt}")
+        if self.params.nt != round(self.params.tmax / self.params.dt):
+            raise ValueError(f"nt {self.params.nt} does not match tmax {self.params.tmax} and dt {self.params.dt}. ")
 
+    def validate_params(self):
         if self.params.E < 1:
             raise ValueError(f"Number of ensemble members E must be greater than or equal to 1")
-        
         pass
 
     def draw_noise(self, n_steps, key1, key2):
@@ -125,9 +116,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                                      )
         return u
     
-    def Dealiased_RK4(self, initial_state, noise_advective, noise_forcing):
+    def Dealiased_SRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
-        u = Dealiased_RK4(u,
+        u = Dealiased_SRK4(u,
                  self.L,
                  self.g,
                  self.k,
@@ -150,8 +141,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         else:
             noise_advective = noise
             noise_forcing = noise
-        #self.validate_params()
-            
+        self.validate_params()
+        self.timestep_validatate()    
         if self.params.method == 'Dealiased_ETDRK4':
             def scan_fn(y, i):
                 y_next = self.step_Dealiased_ETDRK4(y, noise_advective[i], noise_forcing[i])
@@ -168,9 +159,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             def scan_fn(y,i):
                 y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
-        elif self.params.method == 'Dealiased_RK4':
+        elif self.params.method == 'Dealiased_SRK4':
             def scan_fn(y,i):
-                y_next = self.Dealiased_RK4(y, noise_advective[i], noise_forcing[i])
+                y_next = self.Dealiased_SRK4(y, noise_advective[i], noise_forcing[i])
                 return y_next, y_next
             
         else:
@@ -181,7 +172,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         return u_out
     
     def final_time_run(self, initial_state, n_steps, noise):
-        """_run whilst only giving final timestep
+        """_run whilst only giving final timestep,
             this approach does not hold data in local memory.
             _
 
@@ -220,9 +211,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             def scan_fn(y,i):
                 y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
                 return y_next, None
-        elif self.params.method == 'Dealiased_RK4':
+        elif self.params.method == 'Dealiased_SRK4':
             def scan_fn(y,i):
-                y_next = self.Dealiased_RK4(y, noise_advective[i], noise_forcing[i])
+                y_next = self.Dealiased_SRK4(y, noise_advective[i], noise_forcing[i])
                 return y_next, None
             
         else:
@@ -319,7 +310,7 @@ def stochastic_basis_specifier(x, P, name):
 ###----------------------------------------------------------####
 
 @jax.jit
-def Dealiased_RK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+def Dealiased_SRK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
     dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
@@ -649,28 +640,28 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
 KS_params = {# KS equation, from Kassam Krefethen
     "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
-    "xmin": 0., "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150., "dt": 0.25 , "noise_magnitude": 0.0,
+    "xmin": 0., "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 150., "dt": 0.25 , "noise_magnitude": 0.0, "nt": 600,
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KS_params_SALT = {# KS equation, from Kassam Krefethen with transport noise
     "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
-    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 150, "dt": 0.25, "noise_magnitude": 0.001,
+    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 150, "dt": 0.25, "noise_magnitude": 0.001, "nt": 600,
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
 KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 1, "dt": 0.001, "noise_magnitude": 0.0,
+    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 4, "dt": 0.001, "noise_magnitude": 0.0, "nt": 4000,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 4, "dt": 0.001, "noise_magnitude": 0.01,
+    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 4, "dt": 0.001, "noise_magnitude": 0.01, "nt": 4000,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -678,7 +669,7 @@ KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersio
 Heat_params = {# Heat equation. 
     "equation_name" : 'Heat', 
     "c_0": 0, "c_1": 0, "c_2": -0.1, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.1,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.1, "nt": int(16 * 128),
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -686,7 +677,7 @@ Heat_params = {# Heat equation.
 LinearAdvection_params = {# Linear Advection equation.
     "equation_name" : 'Linear-Advection', 
     "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.001,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.001, "nt": int(16 * 128),
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -694,7 +685,7 @@ LinearAdvection_params = {# Linear Advection equation.
 Burgers_params={# Burgers equation. 
     "equation_name" : 'Burgers', 
     "c_0": 0, "c_1": 1, "c_2": -1/256, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 0.5, "dt": 1 / 128,  "noise_magnitude": 0.001,
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 1, "tmax": 0.5, "dt": 1 / 128,  "noise_magnitude": 0.001, "nt": int(0.5 * 128),
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
@@ -702,14 +693,14 @@ Burgers_params={# Burgers equation.
 KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.01, "dt": 2e-6, "noise_magnitude": 0.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 0, "S": 0, "E": 1, "tmax": 0.01, "dt": 2e-6, "noise_magnitude": 0.0, "nt": int(0.01 / 2e-6),
     "initial_condition": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
 KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 2, "tmax": 0.01, "dt": 2e-6, "noise_magnitude": 2,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 256, "P": 1, "S": 0, "E": 2, "tmax": 0.01, "dt": 2e-6, "noise_magnitude": 2,"nt": int(0.01 / 2e-6),
     "initial_condition": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'Dealiased_SETDRK4',
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -718,7 +709,7 @@ KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publ
 KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 30, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 30, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0, "nt": int(1.0 / 0.0001),
     "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -726,7 +717,7 @@ KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/
 KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name": 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1e-4, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 128, "P": 1, "S": 0, "E": 3, "tmax": 10, "dt": 1e-5, "noise_magnitude": 0.1,
+    "xmin":0, "xmax":1, "nx": 128, "P": 1, "S": 0, "E": 3, "tmax": 10, "dt": 1e-5, "noise_magnitude": 0.1, "nt": 1000000,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
@@ -734,12 +725,16 @@ KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
 KDV_params_exact_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 1, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 1, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0, "nt": int(1.0 / 0.0001),
     "initial_condition": 'new_traveling_wave', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
 
 if __name__ == "__main__":
+    #### Below is a testing script to run the code,
+    #### Used primarily for generating the config parameters.
+
+
     jax.config.update("jax_enable_x64", True)
     #params = LinearAdvection_params#KDV_params_SALT#KDV_params_SALT
     #params = KDV_params
@@ -774,10 +769,10 @@ if __name__ == "__main__":
 
     E_1, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
     #E_weights, Q, LW = LW_contour_trick(L, dt, M=64, R=1)
-    nmax = round(tmax / dt)
-    uu = jnp.zeros([E, nmax, nx])
+    nt = round(tmax / dt)
+    uu = jnp.zeros([E, nt, nx])
     uu = uu.at[:, 0, :].set(u)
-    UU = jnp.zeros([E, nmax, nx])
+    UU = jnp.zeros([E, nt, nx])
     UU = UU.at[:, 0, :].set(u)
 
     stochastic_advection_basis = params["noise_magnitude"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
@@ -785,8 +780,8 @@ if __name__ == "__main__":
 
     key = jax.random.PRNGKey(0)
     key1, key2 = jax.random.split(key)
-    dW = jax.random.normal(key1, shape=(nmax, E, P))
-    dZ = jax.random.normal(key2, shape=(nmax, E, S))
+    dW = jax.random.normal(key1, shape=(nt, E, P))
+    dZ = jax.random.normal(key2, shape=(nt, E, S))
     print(stochastic_advection_basis.shape,dW.shape)
 
     # W = jnp.cumsum(dW, axis=0)
@@ -795,7 +790,7 @@ if __name__ == "__main__":
     # plt.show()
     dt = 0.00001
     #L=-L
-    for n in range(1, nmax):
+    for n in range(1, nt):
         beta = 3
         # some number instead of 0.125. 
         #U = initial_condition((x - 4*beta**2 * (dt*n) - 1/2*W[n,:,:] + xmax)%(xmax*2) - xmax, E, params["initial_condition"])
@@ -833,7 +828,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.xlabel("x")
     plt.ylabel("t")
-    plt.pcolormesh(x, jnp.arange(0, nmax) * dt, uu.mean(axis=0))
+    plt.pcolormesh(x, jnp.arange(0, nt) * dt, uu.mean(axis=0))
     plt.colorbar(label='Mean Solution')
     plt.title("Ensemble Average Solution")
     plt.show()
@@ -842,7 +837,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.xlabel("x")
     plt.ylabel("t")
-    plt.pcolormesh(x, jnp.arange(0, nmax) * dt, UU.mean(axis=0))
+    plt.pcolormesh(x, jnp.arange(0, nt) * dt, UU.mean(axis=0))
     plt.colorbar(label='Mean Solution')
     plt.title("Ensemble Average Solution")
     plt.show()

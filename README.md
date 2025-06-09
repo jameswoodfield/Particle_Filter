@@ -5,7 +5,16 @@
 In this .ipynb we demonstate running the Deterministic Kuramoto-Sivashinsky equation under the initial conditions specified in Kassam and Trefethen. 
 
 ### Example 2: 
-In these two notebooks: We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of order $10^{-8}$, and observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively.  
+In these two notebooks: We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of order $10^{-8}$, and 
+
+Sensitivities
+
+| KdV   | KS  |
+| ------------- | ------------- |
+|  <img src="Saving/KdV_ic_pertubation_error.png" alt="drawing" width="200"/> | <img src="Saving/KS_ic_pertubation_error.png" alt="drawing" width="200"/> |
+
+we observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV exhibits linear growth of the difference in solution, $||u_1 - u_2||_{2}/||u_2||_2$
+
 
 ### Example 3: 
 In these two notebooks: We demonstrate how to run a particle filter with the stochastic KS and KdV equation under transport noise. We include subsampled data in both space and time. 
@@ -60,3 +69,7 @@ These notebooks visualise the deterministic solution, for the KdV and KS equatio
 These notebooks visualise the effect of ensemble size on the KS and KDV equation, under the standard bootstrap particle filter.
 
 We see that the Particle filter diverges in the case of KS and does not recover in the case of increasing the ensemble size. In the case of KdV increasing the ensemble size does decrease the error. 
+
+
+### Example 8:
+Example 8 shows a soliton-soliton interaction, and a basic setup for a neural network. 
