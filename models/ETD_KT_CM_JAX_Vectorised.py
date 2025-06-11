@@ -33,9 +33,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
         
-        self.noise_key = jax.random.PRNGKey(0)
-        self.key1, self.key2 = jax.random.split(self.noise_key)
-
         self.stochastic_advection_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
         self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
         
@@ -131,11 +128,10 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     ###########################
     ##    Running options    ##
     ###########################
-    def run(self, initial_state, n_steps, noise):
+    def run(self, initial_state, n_steps, noise, key):
         
         if noise is None:
-            self.key1, key1 = jax.random.split(self.key1, 2)
-            self.key2, key2 = jax.random.split(self.key2, 2)
+            key, key1, key2 = jax.random.split(key, 3)
             noise_advective, noise_forcing = self.draw_noise(n_steps, key1, key2)
         else:
             noise_advective, noise_forcing = noise,noise
@@ -171,7 +167,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         return u_out
     
-    def final_time_run(self, initial_state, n_steps, noise):
+    def final_time_run(self, initial_state, n_steps, noise, key):
         """_run whilst only giving final timestep,
             this approach does not hold data in local memory.
             _
@@ -189,8 +185,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         """
 
         if noise is None:
-            self.key1, key1 = jax.random.split(self.key1, 2)
-            self.key2, key2 = jax.random.split(self.key2, 2)
+            key, key1, key2 = jax.random.split(key, 3)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
         else:
             noise_advective, noise_forcing = noise,noise
