@@ -364,22 +364,21 @@ class ParticleFilter_tempered_jittered:
         return final, all
 
 class EnsembleKalmanFilter:
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps
         self.n_dim = n_dim
         self.fwd_model = forward_model
         self.signal_model = signal_model
         self.sigma = sigma
-        self.key = jax.random.PRNGKey(seed)
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
-    def advance_signal(self, signal_position):
-        signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
-    def predict(self, particles):
-        prediction, _ = self.fwd_model.run(particles, self.n_steps, None)# final,all.
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)# final,all.
         return prediction
 
     def observation_from_signal(self, signal, key):
@@ -425,21 +424,22 @@ class EnsembleKalmanFilter:
 
         return particles
 
-    def run_step(self, particles, signal):
-        self.key, obs_key, update_key = jax.random.split(self.key, 3)
-        signal = self.advance_signal(signal)
-        particles = self.predict(particles)
+    def run_step(self, particles, signal, key):
+        key, obs_key, update_key, pred_key, sig_key = jax.random.split(self.key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal, obs_key)
         particles = self.update(particles, observation, update_key)
         return particles, signal, observation
 
-    def run(self, initial_particles, initial_signal, n_total):
+    def run(self, initial_particles, initial_signal, n_total, key):
         def scan_fn(val, i):
-            particles, signal = val
-            particles, signal, observation = self.run_step(particles, signal)
-            return (particles, signal), (particles, signal, observation)
+            particles, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles, signal, key)
+            return (particles, signal, next_key), (particles, signal, observation)
         
-        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
     
 
@@ -448,22 +448,21 @@ class EnsembleKalmanFilter:
 # this class also outputs the solution when data is not available
 class EnsembleKalmanFilter_All:
     print("not currently supported.")
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps
         self.n_dim = n_dim
         self.fwd_model = forward_model
         self.signal_model = signal_model
         self.sigma = sigma
-        self.key = jax.random.PRNGKey(seed)
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
-    def advance_signal(self, signal_position):
-        _, signal = self.signal_model.run(signal_position, self.n_steps, None)
+    def advance_signal(self, signal_position, key):
+        _, signal = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
-    def predict(self, particles):
-        _, prediction = self.fwd_model.run(particles, self.n_steps, None)
+    def predict(self, particles, key):
+        _, prediction = self.fwd_model.run(particles, self.n_steps, None, key)
         # final, all, implies prediction is a array of shape (n_steps(between da), n_particles, n_dim)
         return prediction 
     
@@ -496,16 +495,16 @@ class EnsembleKalmanFilter_All:
         particles = particles + update 
         return particles
     
-    def run_step(self, particles, signal):
-        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
-        signal = self.advance_signal(signal)# self.nstep update
-        particles = self.predict(particles)# all time output. 
+    def run_step(self, particles, signal, key):
+        key, obs_key, sampling_key, pred_key, sig_key = jax.random.split(self.key, 5)
+        signal = self.advance_signal(signal, sig_key)# self.nstep update
+        particles = self.predict(particles, pred_key)# all time output. 
         observation = self.observation_from_signal(signal[-1,:,:], obs_key)
         updated_particles = self.update(particles[-1,:,:], observation, sampling_key)
         particles = particles.at[-1,:,:].set(updated_particles)
         return particles, signal, observation #particles] 
 
-    def run(self, initial_particles, initial_signal, n_total):
+    def run(self, initial_particles, initial_signal, n_total, key):
         """_summary: Runs the initial particles_
 
         Args:
@@ -514,15 +513,16 @@ class EnsembleKalmanFilter_All:
             n_total (_type_): _n_total is the number of data assimilation proceedures._
         """
         def scan_fn(val, i):
-            particles, signal = val # get the carry, 
+            particles, signal, key = val # get the carry, 
+            key, next_key = jax.random.split(key)
             particles_old = particles[-1,:,:]# initially we do not have this dimension.
             signal_old = signal[-1,:,:]
-            particles, signal, observation = self.run_step(particles_old, signal_old) # 
+            particles, signal, observation = self.run_step(particles_old, signal_old, key) # 
             particles_new = particles[-1,:,:][None,...]
             signal_new = signal[-1,:,:][None,...]
-            return (particles_new, signal_new), (particles, signal, observation)
+            return (particles_new, signal_new, next_key), (particles, signal, observation)
         
-        final, all = jax.lax.scan(scan_fn, (initial_particles[None,...], initial_signal[None,...]), jnp.arange(n_total))
+        final, all = jax.lax.scan(scan_fn, (initial_particles[None,...], initial_signal[None,...], key), jnp.arange(n_total))
         #final = jnp.concatenate(final, axis=0)#final.reshape(-1, self.n_particles, self.n_dim)  # reshape to (n_steps, n_particles, n_dim)
         #all = jnp.concatenate(all, axis=0)#all.reshape(-1, self.n_particles, self.n_dim)  # reshape to (n_steps, n_particles, n_dim)
         return final, all
