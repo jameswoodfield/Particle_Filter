@@ -13,6 +13,7 @@ equation_name: KdV
 initial_condition: traveling_wave
 method: Dealiased_SETDRK4
 noise_magnitude: 1.0
+nt: 10000
 nx: 64
 tmax: 1.0
 xmax: 3.141592653589793

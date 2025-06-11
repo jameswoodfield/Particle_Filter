@@ -137,9 +137,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
-        else:
-            noise_advective = noise
-            noise_forcing = noise
+
+
         self.validate_params()
         self.timestep_validatate()    
 
@@ -192,6 +191,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
+
 
         if self.params.method == 'Dealiased_ETDRK4':
             def scan_fn(y, i):
@@ -492,7 +492,7 @@ def Dealiased_eSSPIFSRK_P_33(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 ####-----------------start ETDRK methods----------------------####
 ####----------------------------------------------------------####
 
-def Kassam_Trefethen(dt, L, nx, M=64, R=1):
+def Kassam_Trefethen(dt, L, nx, M=128, R=1):
     """_Precompute weights for use in ETDRK4.
     Hard to evaluate functions are computed by a 
     complex contour integration technique in 
@@ -803,9 +803,9 @@ if __name__ == "__main__":
         #u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
         # dealiasing is important for the IFSRK4 method.
         
-        u = RK4(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #u = RK4(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #u_benchmark = Dealiased_ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
         #u, E, E_2, Q, f1, f2, f3, g
         #u_benchmark = Dealiased_IFSRK4(u_benchmark,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)

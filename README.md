@@ -80,3 +80,7 @@ We see that the Particle filter diverges in the case of KS and does not recover 
 
 ### Example 8:
 Example 8 shows a soliton-soliton interaction, and a basic setup for a neural network. 
+
+
+### Example 9: 
+Example 9 shows the use of the ensemble Kalman filter. 

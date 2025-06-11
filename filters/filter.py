@@ -65,7 +65,7 @@ class ParticleFilter:
         return final, all
 
 
-# Just a test of a very basic filter
+# Particle filter with basic tempering and jittering
 class ParticleFilterTJ:
 
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
@@ -89,7 +89,8 @@ class ParticleFilterTJ:
         return prediction
 
     def observation_from_signal(self, signal, key):
-        observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
         observation = jnp.zeros_like(signal)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
@@ -102,12 +103,6 @@ class ParticleFilterTJ:
         particles = self.resample(pos_out[-1], jax.nn.softmax(log_weights), key)
         return particles
     
-        # def update(self, particles, observation, key):
-        # particles_observed = jnp.zeros_like(particles)
-        # particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
-        # log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        # particles = self.resample(particles, jax.nn.softmax(log_weights), key)
-        # return particles
 
     def tj(self, positions_0, log_weights_0, observation, nens):
         jitter_param = 1e-3
@@ -218,8 +213,6 @@ class ParticleFilterTJ:
         final = (particles, signal)
         all = (jnp.array(all_particles), jnp.array(all_signals), jnp.array(all_observations))
         return final, all
-    
-    
 
 # this class also outputs the solution when data is not available. 
 class ParticleFilterAll:
@@ -369,7 +362,176 @@ class ParticleFilter_tempered_jittered:
         
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
         return final, all
+
+class EnsembleKalmanFilter:
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, observation_locations=None):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.key = jax.random.PRNGKey(seed)
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+
+    def advance_signal(self, signal_position):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
+        return signal
+
+    def predict(self, particles):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None)# final,all.
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+    def update(self, particles, observation, key):
+        # Observation space lambda function, 
+        H = lambda x: x[..., self.observation_locations]
+        # Ensemble mean over the first axis.
+        assert particles.shape[0] == self.n_particles, "Number of particles does not match n_particles"
+        mean = jnp.mean(particles, axis=0)
+        X = particles - mean  # anomalies
+        Y = jax.vmap(H)(particles)# Apply observation operator to each particle
+        #print(f"Y shape: {Y.shape}, particles shape: {particles.shape}")
+        # e.g. Y shape: (128, 16), particles shape: (128, 256)
+        y_mean = jnp.mean(Y, axis=0)
+        Y_perturb = Y - y_mean
+        # shape 128,16
+
+        # Observation noise perturbation
+        key, subkey = jax.random.split(key)
+        obs_perturb = self.sigma * jax.random.normal(subkey, shape=Y.shape)
+        y_obs = H(observation) + obs_perturb
+        # perturbed observation shape: (128, 16)
+
+        # Compute covariances
+        # (128, 256).T @ (128, 16) -> (256, 16)
+        Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        # (128, 16).T @ (128, 16) -> (16, 16)
+        S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
+        # Kalman gain on lower dimensional observation subspace. 
+        K = Pf_HT @ jnp.linalg.inv(S) # P H^{T} (HPH^T - R)^{-1} # R is the observation noise covariance.
+        # (256, 16) @ (16, 16) -> (256, 16)
+        #K = jax.scipy.linalg.solve(S, Pf_HT.T).T # Kalman gain using solve instead of inverse
+        # Update
+        innovations = y_obs - Y # y_{obs}-Hx shape (128, 16)
+        update = jax.vmap(lambda innov: K @ innov)(innovations)  # shape: (n_particles, n_dim)
+        particles = particles + update 
+
+        return particles
+
+    def run_step(self, particles, signal):
+        self.key, obs_key, update_key = jax.random.split(self.key, 3)
+        signal = self.advance_signal(signal)
+        particles = self.predict(particles)
+        observation = self.observation_from_signal(signal, obs_key)
+        particles = self.update(particles, observation, update_key)
+        return particles, signal, observation
+
+    def run(self, initial_particles, initial_signal, n_total):
+        def scan_fn(val, i):
+            particles, signal = val
+            particles, signal, observation = self.run_step(particles, signal)
+            return (particles, signal), (particles, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        return final, all
     
+
+
+# the point is to do full solution output. 
+# this class also outputs the solution when data is not available
+class EnsembleKalmanFilter_All:
+    print("not currently supported.")
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, observation_locations=None):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.key = jax.random.PRNGKey(seed)
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+
+    def advance_signal(self, signal_position):
+        _, signal = self.signal_model.run(signal_position, self.n_steps, None)
+        return signal
+
+    def predict(self, particles):
+        _, prediction = self.fwd_model.run(particles, self.n_steps, None)
+        # final, all, implies prediction is a array of shape (n_steps(between da), n_particles, n_dim)
+        return prediction 
+    
+    # def one_step_predict(self, particles):
+    #     """Predicts the next state of the particles using the forward model."""
+    #     prediction, _ = self.fwd_model.run(particles, 1, None)
+    #     return prediction
+
+    def observation_from_signal(self, signal, key):
+        observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+    def update(self, particles, observation, key):
+        H = lambda x: x[..., self.observation_locations]
+        mean = jnp.mean(particles, axis=0)
+        X = particles - mean  
+        Y = jax.vmap(H)(particles)
+        y_mean = jnp.mean(Y, axis=0)
+        Y_perturb = Y - y_mean
+        key, subkey = jax.random.split(key)
+        obs_perturb = self.sigma * jax.random.normal(subkey, shape=Y.shape)
+        y_obs = H(observation) + obs_perturb
+        Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
+        K = Pf_HT @ jnp.linalg.inv(S) 
+        innovations = y_obs - Y
+        update = jax.vmap(lambda innov: K @ innov)(innovations)
+        particles = particles + update 
+        return particles
+    
+    def run_step(self, particles, signal):
+        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
+        signal = self.advance_signal(signal)# self.nstep update
+        particles = self.predict(particles)# all time output. 
+        observation = self.observation_from_signal(signal[-1,:,:], obs_key)
+        updated_particles = self.update(particles[-1,:,:], observation, sampling_key)
+        particles = particles.at[-1,:,:].set(updated_particles)
+        return particles, signal, observation #particles] 
+
+    def run(self, initial_particles, initial_signal, n_total):
+        """_summary: Runs the initial particles_
+
+        Args:
+            initial_particles (_type_): _description_
+            initial_signal (_type_): _description_
+            n_total (_type_): _n_total is the number of data assimilation proceedures._
+        """
+        def scan_fn(val, i):
+            particles, signal = val # get the carry, 
+            particles_old = particles[-1,:,:]# initially we do not have this dimension.
+            signal_old = signal[-1,:,:]
+            particles, signal, observation = self.run_step(particles_old, signal_old) # 
+            particles_new = particles[-1,:,:][None,...]
+            signal_new = signal[-1,:,:][None,...]
+            return (particles_new, signal_new), (particles, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles[None,...], initial_signal[None,...]), jnp.arange(n_total))
+        #final = jnp.concatenate(final, axis=0)#final.reshape(-1, self.n_particles, self.n_dim)  # reshape to (n_steps, n_particles, n_dim)
+        #all = jnp.concatenate(all, axis=0)#all.reshape(-1, self.n_particles, self.n_dim)  # reshape to (n_steps, n_particles, n_dim)
+        return final, all
+    
+    
+
+    
+
+
 
 # # Some helper functions that may be useful for the various filters (not all tested, and some may be redundant)
 
@@ -569,3 +731,9 @@ def tempering(key, positions, weights, observation, rel_ess_target):
         log_weights = v_get_log_weight(positions, observation, 0.1)
         ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(phi_remaining*log_weights))
         iterations += 1
+
+
+
+
+
+    
