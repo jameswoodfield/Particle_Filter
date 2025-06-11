@@ -68,14 +68,13 @@ class ParticleFilter:
 # Particle filter with basic tempering and jittering
 class ParticleFilterTJ:
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
         self.fwd_model = forward_model # forward model for the ensemble
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
-        self.key = jax.random.PRNGKey(seed)
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
         self.max_iter_jitter = 10
@@ -180,16 +179,16 @@ class ParticleFilterTJ:
         
         return pos_out, origin, log_weights
 
-    def run_step(self, particles, signal):
-        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
-        signal = self.advance_signal(signal)
-        particles = self.predict(particles)
+    def run_step(self, particles, signal, key):
+        key, obs_key, sampling_key, sig_key, pred_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal,sig_key)
+        particles = self.predict(particles,pred_key)
         observation = self.observation_from_signal(signal, obs_key)
 
         particles = self.update(particles, observation, sampling_key)
         return particles, signal, observation
 
-    def run(self, initial_particles, initial_signal, n_total):
+    def run(self, initial_particles, initial_signal, n_total, key):
         """_summary: Runs the initial particles_
 
         Args:
@@ -205,7 +204,8 @@ class ParticleFilterTJ:
         signal = initial_signal
 
         for _ in range(n_total):
-            particles, signal, observation = self.run_step(particles, signal)
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles, signal, key)
             all_particles.append(particles)
             all_signals.append(signal)
             all_observations.append(observation)
@@ -217,23 +217,22 @@ class ParticleFilterTJ:
 # this class also outputs the solution when data is not available. 
 class ParticleFilterAll:
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
         self.fwd_model = forward_model # forward model for the ensemble
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
-        self.key = jax.random.PRNGKey(seed)
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
-    def advance_signal(self, signal_position):
-        _, signal = self.signal_model.run(signal_position, self.n_steps, None)
+    def advance_signal(self, signal_position,key):
+        _, signal = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
-    def predict(self, particles):
-        _, prediction = self.fwd_model.run(particles, self.n_steps, None)
+    def predict(self, particles, key):
+        _, prediction = self.fwd_model.run(particles, self.n_steps, None, key)
         return prediction
 
     def observation_from_signal(self, signal, key):
@@ -249,17 +248,17 @@ class ParticleFilterAll:
         particles = self.resample(particles, jax.nn.softmax(log_weights), key)
         return particles
 
-    def run_step(self, particles, signal):
-        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
-        signal = self.advance_signal(signal)
-        particles = self.predict(particles)
+    def run_step(self, particles, signal, key):
+        key, obs_key, sampling_key, sig_key, pred_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal[-1,:,:], obs_key)
 
         updated_particles = self.update(particles[-1,:,:], observation, sampling_key)
         particles = particles.at[-1,:,:].set(updated_particles)
         return particles, signal, observation
 
-    def run(self, initial_particles, initial_signal, n_total):
+    def run(self, initial_particles, initial_signal, n_total, key):
         """_summary: Runs the initial particles_
 
         Args:
@@ -268,11 +267,12 @@ class ParticleFilterAll:
             n_total (_type_): _n_total is the number of data assimilation proceedures._
         """
         def scan_fn(val, i):
-            particles, signal= val
-            particles, signal, observation = self.run_step(particles[-1,:,:], signal[-1,:,:])
-            return (particles[-1,:,:][None,...], signal[-1,:,:][None,...]), (particles, signal, observation)
+            particles, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles[-1,:,:], signal[-1,:,:], key)
+            return (particles[-1,:,:][None,...], signal[-1,:,:][None,...], next_key), (particles, signal, observation)
         
-        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
     
 
@@ -280,14 +280,13 @@ class ParticleFilterAll:
 
 class ParticleFilter_tempered_jittered:
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
         self.fwd_model = forward_model # forward model for the ensemble
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
-        self.key = jax.random.PRNGKey(seed)
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
@@ -338,16 +337,16 @@ class ParticleFilter_tempered_jittered:
 
         return particles
 
-    def run_step(self, particles, signal):
-        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
-        signal = self.advance_signal(signal)
-        particles = self.predict(particles)
+    def run_step(self, particles, signal, key):
+        key, obs_key, sampling_key, sig_key, pred_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal,sig_key)
+        particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal, obs_key)
 
         particles = self.update(particles, observation, sampling_key)
         return particles, signal, observation
 
-    def run(self, initial_particles, initial_signal, n_total):
+    def run(self, initial_particles, initial_signal, n_total, key):
         """_summary: Runs the initial particles_
 
         Args:
@@ -356,11 +355,12 @@ class ParticleFilter_tempered_jittered:
             n_total (_type_): _n_total is the number of data assimilation proceedures._
         """
         def scan_fn(val, i):
-            particles, signal = val
-            particles, signal, observation = self.run_step(particles, signal)
-            return (particles, signal), (particles, signal, observation)
+            particles, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles, signal, key)
+            return (particles, signal, next_key), (particles, signal, observation)
         
-        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
 
 class EnsembleKalmanFilter:
@@ -425,7 +425,7 @@ class EnsembleKalmanFilter:
         return particles
 
     def run_step(self, particles, signal, key):
-        key, obs_key, update_key, pred_key, sig_key = jax.random.split(self.key, 5)
+        key, obs_key, update_key, pred_key, sig_key = jax.random.split(key, 5)
         signal = self.advance_signal(signal, sig_key)
         particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal, obs_key)
@@ -496,7 +496,7 @@ class EnsembleKalmanFilter_All:
         return particles
     
     def run_step(self, particles, signal, key):
-        key, obs_key, sampling_key, pred_key, sig_key = jax.random.split(self.key, 5)
+        key, obs_key, sampling_key, pred_key, sig_key = jax.random.split(key, 5)
         signal = self.advance_signal(signal, sig_key)# self.nstep update
         particles = self.predict(particles, pred_key)# all time output. 
         observation = self.observation_from_signal(signal[-1,:,:], obs_key)
