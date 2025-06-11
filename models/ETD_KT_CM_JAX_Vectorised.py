@@ -136,8 +136,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         if noise is None:
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
-            noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
-
+            noise_advective, noise_forcing = self.draw_noise(n_steps, key1, key2)
+        else:
+            noise_advective, noise_forcing = noise,noise
 
         self.validate_params()
         self.timestep_validatate()    
@@ -191,7 +192,8 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             self.key1, key1 = jax.random.split(self.key1, 2)
             self.key2, key2 = jax.random.split(self.key2, 2)
             noise_advective,noise_forcing = self.draw_noise(n_steps, key1, key2)
-
+        else:
+            noise_advective, noise_forcing = noise,noise
 
         if self.params.method == 'Dealiased_ETDRK4':
             def scan_fn(y, i):
