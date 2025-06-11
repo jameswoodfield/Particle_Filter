@@ -5,14 +5,13 @@ from .resampling import resamplers
 # Just a test of a very basic filter
 class ParticleFilter:
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, seed=0, resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
         self.fwd_model = forward_model # forward model for the ensemble
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
-        self.key = jax.random.PRNGKey(seed)
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
@@ -39,8 +38,8 @@ class ParticleFilter:
         particles = self.resample(particles, jax.nn.softmax(log_weights), key)
         return particles
 
-    def run_step(self, particles, signal):
-        self.key, obs_key, sampling_key = jax.random.split(self.key, 3)
+    def run_step(self, particles, signal, key):
+        key, obs_key, sampling_key = jax.random.split(key, 3)
         signal = self.advance_signal(signal)
         particles = self.predict(particles)
         observation = self.observation_from_signal(signal, obs_key)
@@ -48,7 +47,7 @@ class ParticleFilter:
         particles = self.update(particles, observation, sampling_key)
         return particles, signal, observation
 
-    def run(self, initial_particles, initial_signal, n_total):
+    def run(self, initial_particles, initial_signal, n_total, key):
         """_summary: Runs the initial particles_
 
         Args:
@@ -57,11 +56,12 @@ class ParticleFilter:
             n_total (_type_): _n_total is the number of data assimilation proceedures._
         """
         def scan_fn(val, i):
-            particles, signal = val
-            particles, signal, observation = self.run_step(particles, signal)
-            return (particles, signal), (particles, signal, observation)
+            particles, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles, signal, key)
+            return (particles, signal, next_key), (particles, signal, observation)
         
-        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal), jnp.arange(n_total))
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
 
 
