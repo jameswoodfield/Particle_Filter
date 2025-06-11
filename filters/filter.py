@@ -15,12 +15,12 @@ class ParticleFilter:
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
-    def advance_signal(self, signal_position):
-        signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
-    def predict(self, particles):
-        prediction, _ = self.fwd_model.run(particles, self.n_steps, None)
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)
         return prediction
 
     def observation_from_signal(self, signal, key):
@@ -39,9 +39,9 @@ class ParticleFilter:
         return particles
 
     def run_step(self, particles, signal, key):
-        key, obs_key, sampling_key = jax.random.split(key, 3)
-        signal = self.advance_signal(signal)
-        particles = self.predict(particles)
+        key, obs_key, sampling_key, pred_key, sig_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal, obs_key)
 
         particles = self.update(particles, observation, sampling_key)
