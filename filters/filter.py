@@ -447,7 +447,6 @@ class EnsembleKalmanFilter:
 # the point is to do full solution output. 
 # this class also outputs the solution when data is not available
 class EnsembleKalmanFilter_All:
-    print("not currently supported.")
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps

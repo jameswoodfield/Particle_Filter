@@ -40,7 +40,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def timestep_validatate(self):
         if self.params.dt <= 0:
             raise ValueError(f"Time step dt must be positive, got {self.params.dt}")
-        if self.params.nt != round(self.params.tmax / self.params.dt):
+        if self.params.nt * self.params.dt != self.params.tmax :
             raise ValueError(f"nt {self.params.nt} does not match tmax {self.params.tmax} and dt {self.params.dt}. ")
 
     def validate_params(self):
@@ -97,13 +97,13 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                              noise_advective,
                              self.params.dt
                              )
+        #u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3
         return u
     
     def Dealiased_eSSPIFSRK_P_33(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_eSSPIFSRK_P_33(u,
-                                     self.E_weights,
-                                     self.E_2,
+                                     self.E_weights,# loss of E_2
                                      self.g,
                                      self.k,
                                      self.L,
@@ -263,6 +263,11 @@ def initial_condition(x, E , name):
     elif name == 'very_steep_traveling_wave':
         beta = 9*9
         ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
+
+    elif name == 'ultra_steep_traveling_wave':
+        beta = 15*15
+        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
+
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
@@ -400,8 +405,9 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     v = jnp.fft.fft(u,axis=1)
     #g = -.5j * dt * k 
     g = g*dt
-    # E = jnp.exp(dt * L)
-    # E_2 = jnp.exp(dt * L / 2)
+    E = jnp.exp(dt * L)
+    E_2 = jnp.exp(dt * L / 2)
+    
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
         n = (r + 2*_RVF)*r # g contains 1/2 in it. 
@@ -814,7 +820,7 @@ if __name__ == "__main__":
         if n % 10 == 0:  # Plot every 10 steps for better performance
             plt.clf()
             for e in range(E):
-                plt.plot(x, u[e, :], label=f'SEDTRK4 {e + 1}',linewidth=0.5,c='b')
+                plt.plot(x, u[e, :], label=f'{e + 1}',linewidth=0.5,c='b')
                 #plt.plot(x, U[e, :], label=f'SEDTRK4',linewidth=0.5,c='k')
 
                 #plt.plot(x, u_benchmark[e, :], label=f'bench{e + 1}')
