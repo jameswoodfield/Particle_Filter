@@ -103,6 +103,18 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                             self.params.dt
                             )
         return u
+    def step_Dealiased_CSSSPETDRK33(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_CSSSPETDRK33(u,
+                            self.A1,
+                            self.A2,
+                            self.g,
+                            self.k,
+                            self.stochastic_advection_basis,
+                            noise_advective,
+                            self.params.dt
+                            )
+        return u
     def step_Dealiased_SETDRK22(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_SETDRK22(u,
@@ -131,7 +143,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     ############################
     #  Dealiased IFSRK methods  #
     ############################
-    
     def Dealiased_IFSRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_IFSRK4(u,
@@ -144,9 +155,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                              noise_advective,
                              self.params.dt
                              )
-        #u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3
         return u
-    
     def Dealiased_eSSPIFSRK_P_33(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_eSSPIFSRK_P_33(u,
@@ -162,6 +171,18 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
     def Dealiased_eSSPIFSRK_P_22(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_eSSPIFSRK_P_22(u,
+                                     self.E_weights,
+                                     self.g,
+                                     self.k,
+                                     self.L,
+                                     self.stochastic_advection_basis,
+                                     noise_advective,
+                                     self.params.dt
+                                     )
+        return u
+    def Dealiased_eSSPIFSRK_P_11(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_eSSPIFSRK_P_11(u,
                                      self.E_weights,# loss of E_2
                                      self.g,
                                      self.k,
@@ -171,7 +192,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                                      self.params.dt
                                      )
         return u
-    
+    ############################
+    #  Dealiased SRK methods  #
+    ############################
     def Dealiased_SRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_SRK4(u,
@@ -183,7 +206,39 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                  self.params.dt
                  )
         return u
-    
+    def Dealiased_SSP33(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_SSP33(u,
+                 self.L,
+                 self.g,
+                 self.k,
+                 self.stochastic_advection_basis,
+                 noise_advective,
+                 self.params.dt
+                 )
+        return u
+    def Dealiased_SSP22(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_SSP22(u,
+                 self.L,
+                 self.g,
+                 self.k,
+                 self.stochastic_advection_basis,
+                 noise_advective,
+                 self.params.dt
+                 )
+        return u
+    def Dealiased_EM(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_EM(u,
+                 self.L,
+                 self.g,
+                 self.k,
+                 self.stochastic_advection_basis,
+                 noise_advective,
+                 self.params.dt
+                 )
+        return u
     
     ###########################
     ##    Running options    ##
@@ -399,6 +454,19 @@ def Dealiased_SRK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
     return u_next
 
 @jax.jit
+def Dealiased_SSP33(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    k1 = Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    k2 = 3/4*u + 1/4*Dealiased_EM(k1,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    u_next = 1/3*u + 2/3*Dealiased_EM(k2,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    return u_next
+
+@jax.jit
+def Dealiased_SSP22(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    k1 = Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    u_next = 1/2*(u+Dealiased_EM(k1,L,g,k,xi_p,dW_t,dt,cutoff_ratio))
+    return u_next
+
+@jax.jit
 def Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
     dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
@@ -419,19 +487,6 @@ def Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
     k1 = f(v)
     v_next = v + dt * k1 
     u_next = jnp.real( jnp.fft.ifft(v_next, axis=-1) )
-    return u_next
-
-@jax.jit
-def Dealiased_SSP22(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    k1 = Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
-    u_next = 1/2*(u+Dealiased_EM(k1,L,g,k,xi_p,dW_t,dt,cutoff_ratio))
-    return u_next
-
-@jax.jit
-def Dealiased_SSP33(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    k1 = Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
-    k2 = 3/4*u + 1/4*Dealiased_EM(k1,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
-    u_next = 1/3*u + 2/3*Dealiased_EM(k2,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
     return u_next
 
 
@@ -522,42 +577,6 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     u_next = jnp.real(jnp.fft.ifft(v))
     return u_next
 
-@jax.jit
-def Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    dW_t = dW_t * jnp.sqrt(dt) / dt
-    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
-    v = jnp.fft.fft(u,axis=1)
-    g = -.5j * dt * k
-    E = jnp.exp(dt * L)
-
-    def N(_v,_RVF,g):
-        r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
-        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
-        return g * n
-    
-    v1 = E*(v + N(v,RVF,g))
-    u_next = jnp.real(jnp.fft.ifft(v1))
-    return u_next
-
-@jax.jit
-def Dealiased_eSSPIFSRK_P_22(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    dW_t = dW_t * jnp.sqrt(dt) / dt
-    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
-    v = jnp.fft.fft(u,axis=1)
-    g = -.5j * dt * k
-    E = jnp.exp(dt * L)
-
-    def N(_v,_RVF,g):
-        r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
-        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
-        return g * n
-    
-    v1 = E*(v + N(v,RVF,g))
-    v1 = 1/2*(E*v + v1 + N(v1,RVF,g))
-    u_next = jnp.real(jnp.fft.ifft(v1))
-    return u_next
 
 @jax.jit
 def Dealiased_eSSPIFSRK_P_33(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
@@ -581,6 +600,43 @@ def Dealiased_eSSPIFSRK_P_33(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     v2 = 2/3*E_23*v + 1/3*(v1 + 4/3*N(v1,RVF,g))
     v3 = 59/128*E*v + 15/128*E*ans_1 + 27/64*E_13*(v2 + 4/3*N(v2,RVF,g))
     u_next = jnp.real(jnp.fft.ifft(v3))
+    return u_next
+
+@jax.jit
+def Dealiased_eSSPIFSRK_P_22(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    dW_t = dW_t * jnp.sqrt(dt) / dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u,axis=1)
+    g = -.5j * dt * k
+    E = jnp.exp(dt * L)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    v1 = E*(v + N(v,RVF,g))
+    v1 = 1/2*(E*v + v1 + N(v1,RVF,g))
+    u_next = jnp.real(jnp.fft.ifft(v1))
+    return u_next
+
+@jax.jit
+def Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    dW_t = dW_t * jnp.sqrt(dt) / dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u,axis=1)
+    g = -.5j * dt * k
+    E = jnp.exp(dt * L)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    v1 = E*(v + N(v,RVF,g))
+    u_next = jnp.real(jnp.fft.ifft(v1))
     return u_next
 
 ####----------------------------------------------------------####
