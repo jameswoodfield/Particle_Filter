@@ -35,7 +35,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         
         self.stochastic_advection_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
         self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
-        
+        self.A1, self.A2, self.B1, self.B2, self.B3, self.E1, self.E2, self.E3, self.E4, self.E5, self.E6, self.E7 = Complex_integration_technique(self.params.dt, self.L, self.params.nx)
 
     def timestep_validatate(self):
         if self.params.dt <= 0:
@@ -67,7 +67,9 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                    self.g,
                    self.k)
         return u
-    
+    ############################
+    #  Dealiased SETDRK methods #
+    ############################
     def step_Dealiased_SETDRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
         u = Dealiased_SETDRK4(u,
@@ -84,6 +86,51 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                             self.params.dt
                             )
         return u
+    def step_Dealiased_SETDRK33(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_SETDRK33(u,
+                            self.E1,
+                            self.E2,
+                            self.E3, 
+                            self.E4,
+                            self.E5, 
+                            self.E6, 
+                            self.E7
+                            self.g,
+                            self.k,
+                            self.stochastic_advection_basis,
+                            noise_advective,
+                            self.params.dt
+                            )
+        return u
+    def step_Dealiased_SETDRK22(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_SETDRK22(u,
+                            self.B1,
+                            self.B2,
+                            self.B3,
+                            self.g,
+                            self.k,
+                            self.stochastic_advection_basis,
+                            noise_advective,
+                            self.params.dt
+                            )
+        return u
+    def step_Dealiased_SETDRK11(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_SETDRK11(u,
+                            self.A1,
+                            self.A2,
+                            self.g,
+                            self.k,
+                            self.stochastic_advection_basis,
+                            noise_advective,
+                            self.params.dt
+                            )
+        return u
+    ############################
+    #  Dealiased IFSRK methods  #
+    ############################
     
     def Dealiased_IFSRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
@@ -112,6 +159,18 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                                      self.params.dt
                                      )
         return u
+    def Dealiased_eSSPIFSRK_P_22(self, initial_state, noise_advective, noise_forcing):
+        u = initial_state
+        u = Dealiased_eSSPIFSRK_P_22(u,
+                                     self.E_weights,# loss of E_2
+                                     self.g,
+                                     self.k,
+                                     self.L,
+                                     self.stochastic_advection_basis,
+                                     noise_advective,
+                                     self.params.dt
+                                     )
+        return u
     
     def Dealiased_SRK4(self, initial_state, noise_advective, noise_forcing):
         u = initial_state
@@ -124,6 +183,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                  self.params.dt
                  )
         return u
+    
     
     ###########################
     ##    Running options    ##
@@ -677,7 +737,7 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
 
 
 def Complex_integration_technique(dt, L, nx, M=128, R=10):
-    """ for CSETDRK1, CSETDRK2, CSETDRK3,
+    """ for SETDRK1, SETDRK2, SETDRK3,
     Args:
         dt (_type_): _timestep_
         L (_type_): _Linear operator_
@@ -687,14 +747,14 @@ def Complex_integration_technique(dt, L, nx, M=128, R=10):
     """
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * L[:, None] + r[None, :]
-    # For CSETDRK1.
+    # For SETDRK1.
     A1 = jnp.exp(dt * L)
     A2 = dt * jnp.mean( (jnp.exp(LR) - 1) / LR, axis=-1)  # trapesium rule performed by mean in the M variable.
-    # for CSETDRK2.
+    # for SETDRK2.
     B1 = jnp.exp(dt * L)
     B2 = dt * jnp.mean( (jnp.exp(LR) - 1) / LR, axis=-1)
     B3 = dt * jnp.mean( (jnp.exp(LR) - 1 - LR ) / LR**2, axis=-1)
-    # for CSETDRK3.
+    # for SETDRK3.
     E1 = jnp.exp(dt * L / 2)
     E2 = dt * jnp.mean( (jnp.exp(LR/2) - 1) / LR, axis=-1)
     E3 = jnp.exp(dt * L)
@@ -705,22 +765,22 @@ def Complex_integration_technique(dt, L, nx, M=128, R=10):
     
     return A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7
 
-def CSETDRK11_params():
-    """_Precompute weights for use in CSETDRK11."""
+def SETDRK11_params():
+    """_Precompute weights for use in SETDRK11."""
     A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7 = Complex_integration_technique(dt, L, nx, M=128, R=1)
     return A1, A2
 
-def CSETDRK22_params():
-    """_Precompute weights for use in CSETDRK22."""
+def SETDRK22_params():
+    """_Precompute weights for use in SETDRK22."""
     A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7 = Complex_integration_technique(dt, L, nx, M=128, R=1)
     return B1, B2, B3
-def CSETDRK33_params():
-    """_Precompute weights for use in CSETDRK33."""
+def SETDRK33_params():
+    """_Precompute weights for use in SETDRK33."""
     A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7 = Complex_integration_technique(dt, L, nx, M=128, R=1)
     return E1, E2, E3, E4, E5, E6, E7 
 
 @jax.jit
-def Dealiased_CSETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+def Dealiased_SETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
     dW_t = dW_t*jnp.sqrt(dt)/dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
@@ -735,7 +795,7 @@ def Dealiased_CSETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
     return u_next
 
 @jax.jit
-def Dealiased_CSETDRK22(u, B1, B2, B3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+def Dealiased_SETDRK22(u, B1, B2, B3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
     dW_t = dW_t*jnp.sqrt(dt)/dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
@@ -751,7 +811,7 @@ def Dealiased_CSETDRK22(u, B1, B2, B3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
     return u_next
 
 @jax.jit
-def Dealiased_CSETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+def Dealiased_SETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
     dW_t = dW_t*jnp.sqrt(dt)/dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
@@ -771,9 +831,9 @@ def Dealiased_CSETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, xi_p, dW_t, dt, cut
 
 @jax.jit
 def Dealiased_CSSSPETDRK33(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
-    k1 = Dealiased_CSETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
-    k2 = 3/4*u + 1/4*Dealiased_CSETDRK11(k1, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
-    u_next = 1/3*u + 2/3*Dealiased_CSETDRK11(k2, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    k1 = Dealiased_SETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    k2 = 3/4*u + 1/4*Dealiased_SETDRK11(k1, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    u_next = 1/3*u + 2/3*Dealiased_SETDRK11(k2, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
     return u_next
 
 
@@ -927,9 +987,9 @@ if __name__ == "__main__":
     dW = jax.random.normal(key1, shape=(nt, E, P))
     dZ = jax.random.normal(key2, shape=(nt, E, S))
     print(stochastic_advection_basis.shape,dW.shape)
-    E1, E2, E3, E4, E5, E6, E7 = CSETDRK33_params()
-    A1, A2 = CSETDRK11_params()
-    B1, B2, B3 = CSETDRK22_params()
+    E1, E2, E3, E4, E5, E6, E7 = SETDRK33_params()
+    A1, A2 = SETDRK11_params()
+    B1, B2, B3 = SETDRK22_params()
 
     # W = jnp.cumsum(dW, axis=0)
     # W = jnp.sqrt(dt) * params["magnitude"] * W
@@ -939,11 +999,10 @@ if __name__ == "__main__":
     #L=-L
     for n in range(1, nt):
         beta = 3
-        # CSETDRK methods:
-        #u = Dealiased_eSSPIFSRK_P_11(u, E_1, g, k, L, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u = Dealiased_CSETDRK11(u, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u = Dealiased_CSETDRK22(u, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u = Dealiased_CSETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # SETDRK methods:
+        # u = Dealiased_SETDRK11(u, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u = Dealiased_SETDRK22(u, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u = Dealiased_SETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
         # u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         # u = Dealiased_CSSSPETDRK33(u, A1, A2, g, k, stochastic_advection_basis, dt, cutoff_ratio=2/3)
         ##IFSRK methods: 
