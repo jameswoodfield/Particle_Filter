@@ -338,6 +338,43 @@ def Dealiased_SRK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
     u_next = jnp.real( jnp.fft.ifft(v_next, axis=-1) )
     return u_next
 
+@jax.jit
+def Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    dW_t = dW_t * jnp.sqrt(dt) / dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u, axis=1)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    def L_function(_v,L):
+        return L * _v
+    
+    def f(_v):
+        return (L_function(_v, L) + N(_v, RVF, g))
+
+    k1 = f(v)
+    v_next = v + dt * k1 
+    u_next = jnp.real( jnp.fft.ifft(v_next, axis=-1) )
+    return u_next
+
+@jax.jit
+def Dealiased_SSP22(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    k1 = Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    u_next = 1/2*(u+Dealiased_EM(k1,L,g,k,xi_p,dW_t,dt,cutoff_ratio))
+    return u_next
+
+@jax.jit
+def Dealiased_SSP33(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    k1 = Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    k2 = 3/4*u + 1/4*Dealiased_EM(k1,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    u_next = 1/3*u + 2/3*Dealiased_EM(k2,L,g,k,xi_p,dW_t,dt,cutoff_ratio)
+    return u_next
+
+
 ####----------------------------------------------------------####
 ####-----------------------SIFRK methods----------------------####
 ####----------------------------------------------------------####
@@ -445,7 +482,6 @@ def Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
 @jax.jit
 def Dealiased_eSSPIFSRK_P_22(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    "SSP"
     dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u,axis=1)
@@ -640,7 +676,7 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
     return spectral_field
 
 
-def Complex_integration_technique(dt, L, nx, M=128, R=1):
+def Complex_integration_technique(dt, L, nx, M=128, R=10):
     """ for CSETDRK1, CSETDRK2, CSETDRK3,
     Args:
         dt (_type_): _timestep_
@@ -649,21 +685,42 @@ def Complex_integration_technique(dt, L, nx, M=128, R=1):
         M (int, optional): _number of points for integration_. Defaults to 32.
         R (int, optional): _Radius of circle used_. Defaults to 1.
     """
-    e_0 = jnp.exp(dt * L)
-    e_0_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * L[:, None] + r[None, :]
-    e_1  = dt * jnp.mean( (1 - jnp.exp(LR)) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
-    e_2 = dt * jnp.mean( (1+LR-jnp.exp(LR)) / LR**2, axis=-1)# trapesium rule performed by mean in the M variable.
+    # For CSETDRK1.
+    A1 = jnp.exp(dt * L)
+    A2 = dt * jnp.mean( (jnp.exp(LR) - 1) / LR, axis=-1)  # trapesium rule performed by mean in the M variable.
+    # for CSETDRK2.
+    B1 = jnp.exp(dt * L)
+    B2 = dt * jnp.mean( (jnp.exp(LR) - 1) / LR, axis=-1)
+    B3 = dt * jnp.mean( (jnp.exp(LR) - 1 - LR ) / LR**2, axis=-1)
+    # for CSETDRK3.
+    E1 = jnp.exp(dt * L / 2)
+    E2 = dt * jnp.mean( (jnp.exp(LR/2) - 1) / LR, axis=-1)
+    E3 = jnp.exp(dt * L)
+    E4 = dt * jnp.mean( (jnp.exp(LR) - 1) / LR, axis=-1)
+    E5 = dt * jnp.mean( (-4 - LR + jnp.exp(LR)*(4 - 3*LR + LR**2)  ) / LR**3, axis=-1)
+    E6 = dt * 4* jnp.mean( (2 + LR + jnp.exp(LR)*(-2 + LR)) / LR**3, axis=-1)
+    E7 = dt * jnp.mean( (-4 - 3*LR - LR**2 + jnp.exp(LR)*(4 - LR)) / LR**3, axis=-1)
     
-    e_3 =  dt * jnp.mean( (1- jnp.exp(LR)) / LR, axis=-1)
-    e_4 =  dt * jnp.mean( (-4 - LR + jnp.exp(LR*dt)*(4 - 3*LR + LR**2)  ) / LR**3, axis=-1)
-    e_5 = dt * 4* jnp.mean( (2 + LR + jnp.exp(LR*dt)*(-2 + LR)) / LR**3, axis=-1) # 2 times the KT one.
-    e_6 = dt * jnp.mean( (-4 - 3*LR - LR**2 + jnp.exp(LR*dt)*(4 - LR)) / LR**3, axis=-1)
-    return E_1, E_2, Q, f1, f2, f3
+    return A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7
+
+def CSETDRK11_params():
+    """_Precompute weights for use in CSETDRK11."""
+    A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7 = Complex_integration_technique(dt, L, nx, M=128, R=1)
+    return A1, A2
+
+def CSETDRK22_params():
+    """_Precompute weights for use in CSETDRK22."""
+    A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7 = Complex_integration_technique(dt, L, nx, M=128, R=1)
+    return B1, B2, B3
+def CSETDRK33_params():
+    """_Precompute weights for use in CSETDRK33."""
+    A1, A2, B1, B2, B3, E1, E2, E3, E4, E5, E6, E7 = Complex_integration_technique(dt, L, nx, M=128, R=1)
+    return E1, E2, E3, E4, E5, E6, E7 
 
 @jax.jit
-def Dealiased_SETDRK11(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+def Dealiased_CSETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
     dW_t = dW_t*jnp.sqrt(dt)/dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
@@ -673,23 +730,51 @@ def Dealiased_SETDRK11(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, dt, cutoff_ra
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     Nv = N(v,RVF,g)
-    a = E_2 * v + Q * Nv
-    Na =  N(a,RVF,g)
-    b = E_2 * v + Q * Na
-    Nb =  N(b,RVF,g)
-    c = E_2 * a + Q * (2 * Nb - Nv)
-    Nc =  N(c,RVF,g)
-    v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+    v_next  = A1 * v + A2 * Nv
     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
     return u_next
 
+@jax.jit
+def Dealiased_CSETDRK22(u, B1, B2, B3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+    dW_t = dW_t*jnp.sqrt(dt)/dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u, axis=1)
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    Nv = N(v,RVF,g)
+    k1  = B1 * v + B2 * Nv
+    v_next = k1 + B3 * ( N(k1,RVF,g) - Nv )
+    u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
+    return u_next
 
+@jax.jit
+def Dealiased_CSETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+    dW_t = dW_t*jnp.sqrt(dt)/dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u, axis=1)
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    Nv = N(v,RVF,g)
+    k1 = E1 * v + E2 * Nv
+    Nk1 = N(k1,RVF,g)
+    k2 = E3 * v + E4*(2*Nk1 - Nv) 
+    Nk2 = N(k2,RVF,g)
+    v_next = E3 * v + E5*Nv + E6*Nk1+ E7*Nk2
+    u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
+    return u_next
 
-
-
-
-
-
+@jax.jit
+def Dealiased_CSSSPETDRK33(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+    k1 = Dealiased_CSETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    k2 = 3/4*u + 1/4*Dealiased_CSETDRK11(k1, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    u_next = 1/3*u + 2/3*Dealiased_CSETDRK11(k2, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    return u_next
 
 
 
@@ -811,7 +896,7 @@ if __name__ == "__main__":
         yaml.dump(params, outfile, default_flow_style=False)
     # params = LinearAdvection_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
-    E=1
+    E = 1
     #print(dt)
     #dx = (xmax - xmin) / nx
     #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
@@ -835,12 +920,16 @@ if __name__ == "__main__":
 
     stochastic_advection_basis = params["noise_magnitude"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
     stochastic_forcing_basis   = params["noise_magnitude"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
-
+    stochastic_advection_basis = 0.1 * stochastic_advection_basis # scaling the noise for testing purposes.
+    stochastic_forcing_basis   = 0.1 * stochastic_forcing_basis # scaling the noise for testing purposes.
     key = jax.random.PRNGKey(0)
     key1, key2 = jax.random.split(key)
     dW = jax.random.normal(key1, shape=(nt, E, P))
     dZ = jax.random.normal(key2, shape=(nt, E, S))
     print(stochastic_advection_basis.shape,dW.shape)
+    E1, E2, E3, E4, E5, E6, E7 = CSETDRK33_params()
+    A1, A2 = CSETDRK11_params()
+    B1, B2, B3 = CSETDRK22_params()
 
     # W = jnp.cumsum(dW, axis=0)
     # W = jnp.sqrt(dt) * params["magnitude"] * W
@@ -850,26 +939,23 @@ if __name__ == "__main__":
     #L=-L
     for n in range(1, nt):
         beta = 3
-        # some number instead of 0.125. 
-        #U = initial_condition((x - 4*beta**2 * (dt*n) - 1/2*W[n,:,:] + xmax)%(xmax*2) - xmax, E, params["initial_condition"])
-        #u = Dealiased_Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt, 0*stochastic_advection_basis,dW[n, :, :], stochastic_forcing_basis,dZ[n, :, :], k)
-        #u = IFRK4(u,E_weights,E_2,g,k,L)
-        #u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = SETDRK1(u, E, Q, LW, g, k, stochastic_advection_basis,dW[n, :, :], cutoff_ratio=2/3)
-        #u = Dealiased_SETDRK4(u, E_weights, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt)
-        #u = Dealiased_eSSPIFSRK_P_11(u,E,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
-        # dealiasing is important for the IFSRK4 method.
-        
-        #u = RK4(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u_benchmark = Dealiased_ETDRK4(u_benchmark, E_weights, E_2, Q, f1, f2, f3, g, k, cutoff_ratio=2/3)
-        #u, E, E_2, Q, f1, f2, f3, g
-        #u_benchmark = Dealiased_IFSRK4(u_benchmark,E_weights,E_2,g,k,L,stochastic_advection_basis,dW[n, :, :],dt)
-        #u = Strang_split(u, E_weights, E_2, Q, f1, f2, f3, g, dt , stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, dZ[n, :, :])
-        
-        
+        # CSETDRK methods:
+        #u = Dealiased_eSSPIFSRK_P_11(u, E_1, g, k, L, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u = Dealiased_CSETDRK11(u, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u = Dealiased_CSETDRK22(u, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u = Dealiased_CSETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        # u = Dealiased_CSSSPETDRK33(u, A1, A2, g, k, stochastic_advection_basis, dt, cutoff_ratio=2/3)
+        ##IFSRK methods: 
+        # u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        # u = Dealiased_eSSPIFSRK_P_11(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        # u = Dealiased_eSSPIFSRK_P_22(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        # u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        ##SRK methods:
+        # u = Dealiased_SRK4(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #u = Dealiased_EM(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #u = Dealiased_SSP22(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #u = Dealiased_SSP33(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         uu = uu.at[:, n, :].set(u)
         #UU = UU.at[:, n, :].set(U)
         if n % 10 == 0:  # Plot every 10 steps for better performance
