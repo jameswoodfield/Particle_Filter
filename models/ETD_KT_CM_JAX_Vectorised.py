@@ -537,7 +537,7 @@ def Kassam_Trefethen(dt, L, nx, M=128, R=1):
     E_1 = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
-    LR = dt * L[:, None] + r[None, :]
+    LR = dt * L[:, None] + r[None, :] 
     Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
@@ -638,6 +638,61 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
     k_magnitude = jnp.abs(k)
     spectral_field = jnp.where(k_magnitude < cutoff_ratio * jnp.amax(k_magnitude), spectral_field, 0)
     return spectral_field
+
+
+def Complex_integration_technique(dt, L, nx, M=128, R=1):
+    """ for CSETDRK1, CSETDRK2, CSETDRK3,
+    Args:
+        dt (_type_): _timestep_
+        L (_type_): _Linear operator_
+        nx (_type_): _number of spatial points_
+        M (int, optional): _number of points for integration_. Defaults to 32.
+        R (int, optional): _Radius of circle used_. Defaults to 1.
+    """
+    e_0 = jnp.exp(dt * L)
+    e_0_2 = jnp.exp(dt * L / 2)
+    r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
+    LR = dt * L[:, None] + r[None, :]
+    e_1  = dt * jnp.mean( (1 - jnp.exp(LR)) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
+    e_2 = dt * jnp.mean( (1+LR-jnp.exp(LR)) / LR**2, axis=-1)# trapesium rule performed by mean in the M variable.
+    
+    e_3 =  dt * jnp.mean( (1- jnp.exp(LR)) / LR, axis=-1)
+    e_4 =  dt * jnp.mean( (-4 - LR + jnp.exp(LR*dt)*(4 - 3*LR + LR**2)  ) / LR**3, axis=-1)
+    e_5 = dt * 4* jnp.mean( (2 + LR + jnp.exp(LR*dt)*(-2 + LR)) / LR**3, axis=-1) # 2 times the KT one.
+    e_6 = dt * jnp.mean( (-4 - 3*LR - LR**2 + jnp.exp(LR*dt)*(4 - LR)) / LR**3, axis=-1)
+    return E_1, E_2, Q, f1, f2, f3
+
+@jax.jit
+def Dealiased_SETDRK11(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+    dW_t = dW_t*jnp.sqrt(dt)/dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u, axis=1)
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    Nv = N(v,RVF,g)
+    a = E_2 * v + Q * Nv
+    Na =  N(a,RVF,g)
+    b = E_2 * v + Q * Na
+    Nb =  N(b,RVF,g)
+    c = E_2 * a + Q * (2 * Nb - Nv)
+    Nc =  N(c,RVF,g)
+    v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+    u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
+    return u_next
+
+
+
+
+
+
+
+
+
+
+
 
 # Simulation parameters 
 KS_params = {# KS equation, from Kassam Krefethen
