@@ -17,7 +17,8 @@ print(jnp.array(1.0).dtype)
 
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
-    
+    """Exponential Time Differencing-Kassam Trefethen-Cox Mathews JAX Vectorised class
+    """
     def __init__(self, params):
         self.params = params
 
@@ -65,7 +66,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         available_methods = ['Dealiased_ETDRK4',
             'Dealiased_SETDRK4',
             'Dealiased_SETDRK33',
-            'Dealiased_CSSSPETDRK33',
             'Dealiased_SETDRK22',
             'Dealiased_IFSRK4',
             'Dealiased_eSSPIFSRK_P_33',
@@ -790,9 +790,10 @@ def Kassam_Trefethen(dt, L, nx, M=128, R=1):
     Trapezoidal rule has exponential convergence in the complex plane.
     This code differs from the original in the paper, in that KT note that:
     "When L is real, we can exploit the symmetry and evaluate only in equally spaced points on the upper half of a circle,
-    centered on the real axis, then take the real part of the result, this is not done here."
+    centered on the real axis, then take the real part of the result, this is not done here"
     Here here we leave in the more general form, this allows us treat
     complex L associated with dispersion terms, such as in the KdV equation.
+    However, the KS equation, has machine precision error complex values.
     Furthermore, we also absorb the factor of 2 into f2.
     _
 
@@ -1102,6 +1103,15 @@ KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
 
+KDV_params_traveling_demo = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
+    "equation_name" : 'KdV', 
+    "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 30, "tmax": 10.0, "dt": 0.0001, "noise_magnitude": 1.0, "nt": int(10.0 / 0.0001),
+    "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4', 
+    "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
+}
+
+
 KDV_params_SALT = {# KdV equation. gaussian initial condition, small dispersion.
     "equation_name": 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1e-4, "c_4": 0.0,
@@ -1119,10 +1129,8 @@ KDV_params_exact_traveling = {# KdV equation. https://people.maths.ox.ac.uk/tref
 }
 
 if __name__ == "__main__":
-    #### Below is a testing script to run the code,
-    #### Used primarily for generating the config parameters.
-
-
+    #### Below is a testing script to run the code, without instantiating the class.
+    # Currently setup to demonstrate the advantages of the ETDRK4 method for the KdV equation, at high cfl low res.
     jax.config.update("jax_enable_x64", True)
     #params = LinearAdvection_params#KDV_params_SALT#KDV_params_SALT
     #params = KDV_params
@@ -1131,7 +1139,7 @@ if __name__ == "__main__":
     #params = KS_params_SALT
     #params = Burgers_params
     #params = LinearAdvection_params
-    params = KDV_params_traveling
+    params = KDV_params_traveling_demo 
     #params = KS_params
     cwd = os.getcwd()
     # _equation_name = params['equation_name'];_initial_condition = params['initial_condition']
@@ -1141,7 +1149,6 @@ if __name__ == "__main__":
     # params = LinearAdvection_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     E = 1
-    nx = 128*2
     nt = params["nt"]
     nt = nt * 1
     dt = dt / 1
@@ -1158,7 +1165,7 @@ if __name__ == "__main__":
     L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
     g = -0.5j * k * params["c_1"]
 
-    E_1, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
+    E_1, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=10)# we rename the weights
     nt = round(tmax / dt)
     uu = jnp.zeros([E, nt, nx])
     uu = uu.at[:, 0, :].set(u)
@@ -1185,7 +1192,7 @@ if __name__ == "__main__":
     u1 = u
     u2 = u
     u3 = u
-    u4 = u
+    # u4 = u
     u5 = u
     u6 = u
     u7 = u
@@ -1211,17 +1218,14 @@ if __name__ == "__main__":
     # Compute analytic using the vectorized function
     analytic = compute_ans_vmap(n_values, x, dt, W_new, xmax, E, 'new_traveling_wave')
 
-    print("Analytic shape:", analytic.shape)
-    #L=-L
     for n in range(1, nt):
-        beta = 3
         # SETDRK methods:
         ue = analytic[n,0,:]
 
         #u1 = Dealiased_SETDRK11(u1, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
         u2 = Dealiased_SETDRK22(u2, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
         u3 = Dealiased_SETDRK33(u3, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        u4 = Dealiased_CSSSPETDRK33(u4, A1, A2, g, k,  stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        # u4 = Dealiased_CSSSPETDRK33(u4, A1, A2, g, k,  stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
         u5 = Dealiased_SETDRK4(u5, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         #IFSRK methods: 
         u6 = Dealiased_IFSRK4(u6,E_1,E_2,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
@@ -1242,7 +1246,7 @@ if __name__ == "__main__":
                 ###plt.plot(x, u1[e, :], label=f'{e + 1} SETDRK11-not-appropriate', linewidth=0.25, c='b', linestyle='--', marker='o', markerfacecolor='none')
                 plt.plot(x, u2[e, :], label=f'{e + 1} SETDRK22', linewidth=0.25, c='r', linestyle='--', marker='s', markerfacecolor='none')
                 plt.plot(x, u3[e, :], label=f'{e + 1} SETDRK33', linewidth=0.25, c='g', linestyle='--', marker='^', markerfacecolor='none')
-                plt.plot(x, u4[e, :], label=f'{e + 1} CSSSPETDRK33', linewidth=0.25, c='m', linestyle='--', marker='v', markerfacecolor='none')
+                # plt.plot(x, u4[e, :], label=f'{e + 1} CSSSPETDRK33', linewidth=0.25, c='m', linestyle='--', marker='v', markerfacecolor='none')
                 plt.plot(x, u5[e, :], label=f'{e + 1} SETDRK4', linewidth=0.5, c='c', linestyle='--', marker='d', markerfacecolor='none')
                 plt.plot(x, u6[e, :], label=f'{e + 1} IFSRK4', linewidth=0.5, c='y', linestyle='--', marker='p', markerfacecolor='none')
                 plt.plot(x, u7[e, :], label=f'{e + 1} eSSPIFSRK_P_33', linewidth=0.5, c='k', linestyle='--', marker='+', markerfacecolor='none')

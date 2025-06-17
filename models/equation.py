@@ -1,3 +1,5 @@
+import os
+os.environ["JAX_ENABLE_X64"] = "true"
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import jax
@@ -6,6 +8,7 @@ from .base import BaseModel
 from .ETD_KT_CM_JAX_Vectorised import ETD_KT_CM_JAX_Vectorised
 
 Solver1D = type("Solver1D", (ETD_KT_CM_JAX_Vectorised,), {})
+## this represents an abstract solver for other examples for other models.
 
 @dataclass(frozen=True)
 class Equation1D(BaseModel):

@@ -1,3 +1,5 @@
+import os
+os.environ["JAX_ENABLE_X64"] = "true"
 import jax
 import jax.numpy as jnp
 from .resampling import resamplers
@@ -34,6 +36,7 @@ class ParticleFilter:
     def update(self, particles, observation, key):
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        # since we are always resampling, we do not need to sequentially update the weights
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
         particles = self.resample(particles, jax.nn.softmax(log_weights), key)
         return particles
@@ -62,6 +65,83 @@ class ParticleFilter:
             return (particles, signal, next_key), (particles, signal, observation)
         
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
+        return final, all
+    
+
+class ParticleFilter_Sequential:
+    """ this differs from the above in that resampling is done conditionally on the ess, based on sequential likelihood of the weights."""
+
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
+        self.n_particles = n_particles
+        self.n_steps = n_steps # no of steps of numerical model in between DA steps
+        self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
+        self.fwd_model = forward_model # forward model for the ensemble
+        self.signal_model = signal_model # forward model for the signal
+        self.sigma = sigma # observation error standard deviation
+        self.resample = resamplers[resampling]
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+        self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
+    
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
+        return signal
+
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
+        # observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+    def update(self, weights, particles, observation, key):
+        " this one differs"
+        
+        particles_observed = jnp.zeros_like(particles)
+        particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
+
+        likelyhood = jnp.exp(log_weights)
+        weights = weights * likelyhood
+        ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
+
+        particles = jax.lax.cond(
+                    ess < 1/2,
+                    lambda particles: self.resample(particles, jax.nn.softmax(log_weights), key),
+                    lambda particles: particles,
+                    particles
+                )
+
+        return particles, weights
+
+    def run_step(self, weights, particles, signal, key):
+        key, obs_key, sampling_key, pred_key, sig_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
+        observation = self.observation_from_signal(signal, obs_key)
+
+        particles,weights = self.update(particles, weights, observation, sampling_key)
+        return particles, weights, signal, observation
+
+    def run(self, initial_particles, initial_weights, initial_signal, n_total, key):
+        """_summary: Runs the initial particles_
+
+        Args:
+            initial_particles (_type_): _description_
+            initial_signal (_type_): _description_
+            n_total (_type_): _n_total is the number of data assimilation proceedures._
+        """
+        def scan_fn(val, i):
+            particles, weights, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, weights, signal, observation = self.run_step(particles, signal, key)
+            return (particles, weights, signal, next_key), (particles, weights, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles,initial_weights, initial_signal, key), jnp.arange(n_total))
         return final, all
 
 
@@ -289,17 +369,19 @@ class ParticleFilter_tempered_jittered:
         self.sigma = sigma # observation error standard deviation
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
-
-    def advance_signal(self, signal_position):
-        signal, _ = self.signal_model.run(signal_position, self.n_steps, None)
+        self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly 
+    
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
-    def predict(self, particles):
-        prediction, _ = self.fwd_model.run(particles, self.n_steps, None)
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)
         return prediction
 
     def observation_from_signal(self, signal, key):
-        observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
         observation = jnp.zeros_like(signal)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
@@ -308,8 +390,11 @@ class ParticleFilter_tempered_jittered:
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
+        # likelyhood = jnp.exp(log_weights)
+        # weights = weights * likelyhood
+        # ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
 
-        num_tempering_steps = 5
+        num_tempering_steps = 1
         beta_schedule = jnp.linspace(0, 1, num_tempering_steps)
 
         # def resampling_and_jittering(particles, log_weights, key):
@@ -330,10 +415,18 @@ class ParticleFilter_tempered_jittered:
             particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
             log_weights = v_get_log_weight(particles_observed*delta_beta, observation*delta_beta, self.sigma)
             ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(log_weights))
+            
+            particles = jax.lax.cond(
+                    ess < 1/2,
+                    lambda particles: self.resample(particles, jax.nn.softmax(log_weights), key),
+                    lambda particles: particles,
+                    particles
+                )
+            
             jitter_key, key = jax.random.split(key)
             jitter = 0.001 * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.)
             particles = particles + jitter
-            particles = self.resample(particles, jax.nn.softmax(log_weights), key)
+            
 
         return particles
 
@@ -416,7 +509,7 @@ class EnsembleKalmanFilter:
         # Kalman gain on lower dimensional observation subspace. 
         K = Pf_HT @ jnp.linalg.inv(S) # P H^{T} (HPH^T - R)^{-1} # R is the observation noise covariance.
         # (256, 16) @ (16, 16) -> (256, 16)
-        #K = jax.scipy.linalg.solve(S, Pf_HT.T).T # Kalman gain using solve instead of inverse
+        #K = jax.scipy.linalg.solve(S, Pf_HT.T).T # Kalman gain using solve instead of inverse, if wanting to use jax scipy.
         # Update
         innovations = y_obs - Y # y_{obs}-Hx shape (128, 16)
         update = jax.vmap(lambda innov: K @ innov)(innovations)  # shape: (n_particles, n_dim)

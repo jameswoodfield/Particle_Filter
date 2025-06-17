@@ -1,3 +1,5 @@
+import os
+os.environ["JAX_ENABLE_X64"] = "true"
 from abc import ABC, abstractmethod
 
 class BaseModel(ABC):
