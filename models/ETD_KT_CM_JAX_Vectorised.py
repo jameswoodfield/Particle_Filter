@@ -1,3 +1,7 @@
+
+import os
+os.environ["JAX_ENABLE_X64"] = "true"
+
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
@@ -6,14 +10,11 @@ try:
     from .base import BaseModel
 except ImportError:
     from base import BaseModel
-# try:
-#     from jax.config import config
-#     config.update("jax_enable_x64", True)
-jax.config.update("jax_enable_x64", True)
-print(jax.config.read("jax_enable_x64"))
+    
 import yaml
-import os
-os.environ["JAX_ENABLE_X64"] = "true"
+from jax import vmap
+print(jnp.array(1.0).dtype)
+
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     
@@ -23,7 +24,6 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
         self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
         self.dx = self.x[1]-self.x[0] # cell width
-
         #self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
         #self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
 
@@ -37,6 +37,20 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
         self.A1, self.A2, self.B1, self.B2, self.B3, self.E1, self.E2, self.E3, self.E4, self.E5, self.E6, self.E7 = Complex_integration_technique(self.params.dt, self.L, self.params.nx)
 
+    def update_params(self, new_params):
+        """Update the parameters of the model."""
+        self.params = new_params
+        self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
+        self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] )
+        self.k = jnp.fft.fftfreq(self.params.nx, self.dx) * 2 * jnp.pi # additional multiplication by 2pi
+        self.L = -1j * self.k * self.params.c_0 + self.k**2 * self.params.c_2 + 1j * self.k**3 * self.params.c_3 - self.k**4 * self.params.c_4
+        self.g = -0.5j * self.k * self.params.c_1
+        self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
+        self.stochastic_advection_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
+        self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
+        self.A1, self.A2, self.B1, self.B2, self.B3, self.E1, self.E2, self.E3, self.E4, self.E5, self.E6, self.E7 = Complex_integration_technique(self.params.dt, self.L, self.params.nx)
+
+
     def timestep_validatate(self):
         if self.params.dt <= 0:
             raise ValueError(f"Time step dt must be positive, got {self.params.dt}")
@@ -47,7 +61,21 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         if self.params.E < 1:
             raise ValueError(f"Number of ensemble members E must be greater than or equal to 1")
         pass
-
+    def print_timestepping_methods(self):
+        available_methods = ['Dealiased_ETDRK4',
+            'Dealiased_SETDRK4',
+            'Dealiased_SETDRK33',
+            'Dealiased_CSSSPETDRK33',
+            'Dealiased_SETDRK22',
+            'Dealiased_IFSRK4',
+            'Dealiased_eSSPIFSRK_P_33',
+            'Dealiased_eSSPIFSRK_P_22',
+            'Dealiased_SRK4',
+            'Dealiased_SSP33',
+            'Dealiased_SSP22']
+        print(available_methods)
+        return available_methods
+        
     def draw_noise(self, n_steps, key1, key2):
         dW = jax.random.normal(key1, shape=(n_steps, self.params.E, self.params.P))
         dZ = jax.random.normal(key2, shape=(n_steps, self.params.E, self.params.S))
@@ -95,7 +123,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
                             self.E4,
                             self.E5, 
                             self.E6, 
-                            self.E7
+                            self.E7,
                             self.g,
                             self.k,
                             self.stochastic_advection_basis,
@@ -498,10 +526,10 @@ def stochastic_basis_specifier(x, P, name):
 
 @jax.jit
 def Dealiased_SRK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
-
     dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
+    #g = g * dt # ensure g is multiplied by dt, as it is -.5j*dt*k
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
@@ -647,6 +675,33 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     u_next = jnp.real(jnp.fft.ifft(v))
     return u_next
 
+@jax.jit
+def Dealiased_IFSRK4_new(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    dW_t = dW_t * jnp.sqrt(dt) / dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u,axis=1)
+    #g = -.5j * dt * k 
+    g = g*dt
+    E = jnp.exp(dt * L)
+    E_2 = jnp.exp(dt * L / 2)
+    
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    a = N(v,RVF,g)
+    v1 = E_2*(v + a/2)
+    b = N(v1,RVF,g)
+    v2 = E_2*(v + b/2)
+    c = N(v2,RVF,g)
+    v3 = E*v + E_2*c
+    d = N(v3,RVF,g)
+    v = E*v + ( E*a + 2*E_2*(b+c) +d )/6
+
+    u_next = jnp.real(jnp.fft.ifft(v))
+    return u_next
+
 
 @jax.jit
 def Dealiased_eSSPIFSRK_P_33(u,E,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
@@ -735,8 +790,8 @@ def Kassam_Trefethen(dt, L, nx, M=128, R=1):
     Trapezoidal rule has exponential convergence in the complex plane.
     This code differs from the original in the paper, in that KT note that:
     "When L is real, we can exploit the symmetry and evaluate only in equally spaced points on the upper half of a circle,
-    centered on the real axis, then take the real part of the result."
-    Here here we leave in the more general form, this allows us 
+    centered on the real axis, then take the real part of the result, this is not done here."
+    Here here we leave in the more general form, this allows us treat
     complex L associated with dispersion terms, such as in the KdV equation.
     Furthermore, we also absorb the factor of 2 into f2.
     _
@@ -756,10 +811,11 @@ def Kassam_Trefethen(dt, L, nx, M=128, R=1):
         f2 :  beta=f2
         f3 :  gamma=f3._
     """
+    #R = 2 * jnp.max(jnp.abs(L*dt))# contain the spectrum of L.
     E_1 = jnp.exp(dt * L)
     E_2 = jnp.exp(dt * L / 2)
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
-    LR = dt * L[:, None] + r[None, :] 
+    LR = dt * L[:, None] + r[None, :]# dt*L[:] is the center. Radius in new dim
     Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
     f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
     f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
@@ -871,6 +927,7 @@ def Complex_integration_technique(dt, L, nx, M=128, R=10):
         M (int, optional): _number of points for integration_. Defaults to 32.
         R (int, optional): _Radius of circle used_. Defaults to 1.
     """
+    #R = 0.005 * jnp.max(jnp.abs(L))
     r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
     LR = dt * L[:, None] + r[None, :]
     # For SETDRK1.
@@ -957,9 +1014,10 @@ def Dealiased_SETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, xi_p, dW_t, dt, cuto
 
 @jax.jit
 def Dealiased_CSSSPETDRK33(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio=2/3):
+    # naive attempt for a ETDRK33 method, only using the A1,A2
     k1 = Dealiased_SETDRK11(u, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
-    k2 = 3/4*u + 1/4*Dealiased_SETDRK11(k1, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
-    u_next = 1/3*u + 2/3*Dealiased_SETDRK11(k2, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    k2 = 3/4*u + (1/4)*Dealiased_SETDRK11(k1, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
+    u_next = 1/3*u + (2/3)*Dealiased_SETDRK11(k2, A1, A2, g, k, xi_p, dW_t, dt, cutoff_ratio)
     return u_next
 
 
@@ -1026,6 +1084,7 @@ KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publicatio
     "initial_condition": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
+
 KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
@@ -1075,29 +1134,31 @@ if __name__ == "__main__":
     params = KDV_params_traveling
     #params = KS_params
     cwd = os.getcwd()
-
-    _equation_name = params['equation_name'];_initial_condition = params['initial_condition']
-    run_file_name = f'{cwd}/config/auto_yaml/{_equation_name}_{_initial_condition}.yml'
-    with open(f'{run_file_name}', 'w') as outfile:
-        yaml.dump(params, outfile, default_flow_style=False)
+    # _equation_name = params['equation_name'];_initial_condition = params['initial_condition']
+    # run_file_name = f'{cwd}/config/auto_yaml/{_equation_name}_{_initial_condition}.yml'
+    # with open(f'{run_file_name}', 'w') as outfile:
+    #     yaml.dump(params, outfile, default_flow_style=False)
     # params = LinearAdvection_params
     xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
     E = 1
-    #print(dt)
+    nx = 128*2
+    nt = params["nt"]
+    nt = nt * 1
+    dt = dt / 1
+    print(dt,tmax,nt)
+    assert nt*dt == tmax, "nt must be equal to tmax/dt"
     #dx = (xmax - xmin) / nx
     #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
     xf = jnp.linspace(xmin, xmax, nx+1)
     x = 0.5 * ( xf[1:] + xf[:-1] ) # cell centers
     dx = x[1]-x[0] # cell width
     u = initial_condition(x, E, params["initial_condition"])
-    u_benchmark = u
     
     k = jnp.fft.fftfreq(nx, dx, dtype=jnp.complex128) * 2 * jnp.pi
     L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
     g = -0.5j * k * params["c_1"]
 
     E_1, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=1)# we rename the weights
-    #E_weights, Q, LW = LW_contour_trick(L, dt, M=64, R=1)
     nt = round(tmax / dt)
     uu = jnp.zeros([E, nt, nx])
     uu = uu.at[:, 0, :].set(u)
@@ -1106,8 +1167,8 @@ if __name__ == "__main__":
 
     stochastic_advection_basis = params["noise_magnitude"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
     stochastic_forcing_basis   = params["noise_magnitude"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
-    stochastic_advection_basis = 0.1 * stochastic_advection_basis # scaling the noise for testing purposes.
-    stochastic_forcing_basis   = 0.1 * stochastic_forcing_basis # scaling the noise for testing purposes.
+    stochastic_advection_basis = 1 * stochastic_advection_basis # scaling the noise for testing purposes.
+    stochastic_forcing_basis   = 1 * stochastic_forcing_basis # scaling the noise for testing purposes.
     key = jax.random.PRNGKey(0)
     key1, key2 = jax.random.split(key)
     dW = jax.random.normal(key1, shape=(nt, E, P))
@@ -1121,52 +1182,74 @@ if __name__ == "__main__":
     # W = jnp.sqrt(dt) * params["magnitude"] * W
     # plt.plot(W[:,0,0].T)
     # plt.show()
-    dt = 0.00001
+    u1 = u
+    u2 = u
+    u3 = u
+    u4 = u
+    u5 = u
+    u6 = u
+    u7 = u
+    u8 = u 
+    u9 = u
+    u10 = u
+    u11 = u
+
+    W = jnp.cumsum(dW, axis=0)
+    W = jnp.sqrt(dt) * params["noise_magnitude"] * W
+    W_new = jnp.zeros([nt+1, E, P])
+    W_new = W_new.at[1:,:,:].set(W)
+
+    analytic = jnp.zeros([nt+1, E, nx])
+
+    initial_condition_jitted = jax.jit(initial_condition, static_argnums=(1,2))# jitted with last two arguments frozen
+    def compute_ans(n, x, dt, W_new, xmax, E, initial_condition):
+        # ensure that the initial condition is correctly a
+        return initial_condition_jitted((x - 6*6 * (dt * n) - W_new[n, :, :] + xmax) % (xmax * 2) - xmax, E, initial_condition)
+    compute_ans_vmap = vmap(compute_ans, in_axes=(0, None, None, None, None, None, None))
+    # Generate the range of n values
+    n_values = jnp.arange(nt + 1)
+    # Compute analytic using the vectorized function
+    analytic = compute_ans_vmap(n_values, x, dt, W_new, xmax, E, 'new_traveling_wave')
+
+    print("Analytic shape:", analytic.shape)
     #L=-L
     for n in range(1, nt):
         beta = 3
         # SETDRK methods:
-        # u = Dealiased_SETDRK11(u, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u = Dealiased_SETDRK22(u, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u = Dealiased_SETDRK33(u, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u = Dealiased_SETDRK4(u, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u = Dealiased_CSSSPETDRK33(u, A1, A2, g, k, stochastic_advection_basis, dt, cutoff_ratio=2/3)
-        ##IFSRK methods: 
-        # u = Dealiased_IFSRK4(u,E_1,E_2,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u = Dealiased_eSSPIFSRK_P_11(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u = Dealiased_eSSPIFSRK_P_22(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u = Dealiased_eSSPIFSRK_P_33(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        ue = analytic[n,0,:]
+
+        #u1 = Dealiased_SETDRK11(u1, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        u2 = Dealiased_SETDRK22(u2, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        u3 = Dealiased_SETDRK33(u3, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        u4 = Dealiased_CSSSPETDRK33(u4, A1, A2, g, k,  stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
+        u5 = Dealiased_SETDRK4(u5, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #IFSRK methods: 
+        u6 = Dealiased_IFSRK4(u6,E_1,E_2,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        u7 = Dealiased_eSSPIFSRK_P_33(u7,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        u8 = Dealiased_eSSPIFSRK_P_22(u8,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
+        ##u = Dealiased_eSSPIFSRK_P_11(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
         ##SRK methods:
-        # u = Dealiased_SRK4(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_EM(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_SSP22(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        #u = Dealiased_SSP33(u,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        u9 = Dealiased_SRK4(u9,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        #uq = Dealiased_EM(uq,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        u10 = Dealiased_SSP22(u10,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        u11 = Dealiased_SSP33(u11,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         uu = uu.at[:, n, :].set(u)
         #UU = UU.at[:, n, :].set(U)
         if n % 10 == 0:  # Plot every 10 steps for better performance
             plt.clf()
             for e in range(E):
-                plt.plot(x, u[e, :], label=f'{e + 1}',linewidth=0.5,c='b')
-                #plt.plot(x, U[e, :], label=f'SEDTRK4',linewidth=0.5,c='k')
-
-                #plt.plot(x, u_benchmark[e, :], label=f'bench{e + 1}')
+                plt.plot(x, analytic[n,0,:], label=f'{e + 1} Analytic',linewidth=1,c='k',linestyle='-')
+                ###plt.plot(x, u1[e, :], label=f'{e + 1} SETDRK11-not-appropriate', linewidth=0.25, c='b', linestyle='--', marker='o', markerfacecolor='none')
+                plt.plot(x, u2[e, :], label=f'{e + 1} SETDRK22', linewidth=0.25, c='r', linestyle='--', marker='s', markerfacecolor='none')
+                plt.plot(x, u3[e, :], label=f'{e + 1} SETDRK33', linewidth=0.25, c='g', linestyle='--', marker='^', markerfacecolor='none')
+                plt.plot(x, u4[e, :], label=f'{e + 1} CSSSPETDRK33', linewidth=0.25, c='m', linestyle='--', marker='v', markerfacecolor='none')
+                plt.plot(x, u5[e, :], label=f'{e + 1} SETDRK4', linewidth=0.5, c='c', linestyle='--', marker='d', markerfacecolor='none')
+                plt.plot(x, u6[e, :], label=f'{e + 1} IFSRK4', linewidth=0.5, c='y', linestyle='--', marker='p', markerfacecolor='none')
+                plt.plot(x, u7[e, :], label=f'{e + 1} eSSPIFSRK_P_33', linewidth=0.5, c='k', linestyle='--', marker='+', markerfacecolor='none')
+                plt.plot(x, u8[e, :], label=f'{e + 1} eSSPIFSRK_P_22', linewidth=0.5, c='orange', linestyle='--', marker='x', markerfacecolor='none')
+                #plt.plot(x, u8[e, :], label=f'{e + 1} eSSPIFSRK_P_11', linewidth=0.5, c='purple', linestyle='--', marker='*', markerfacecolor='none')
+                plt.plot(x, u9[e, :], label=f'{e + 1} SRK4', linewidth=0.5, c='brown', linestyle='--', marker='h', markerfacecolor='none')
+                plt.plot(x, u10[e, :], label=f'{e + 1} SSP22', linewidth=0.5, c='gray', linestyle='--', marker='D', markerfacecolor='none')
+                plt.plot(x, u11[e, :], label=f'{e + 1} SSP33', linewidth=0.5, c='olive', linestyle='--', marker='X', markerfacecolor='none')
             plt.legend()
             plt.pause(0.001)
-
-    plt.show()
-    plt.figure()
-    plt.xlabel("x")
-    plt.ylabel("t")
-    plt.pcolormesh(x, jnp.arange(0, nt) * dt, uu.mean(axis=0))
-    plt.colorbar(label='Mean Solution')
-    plt.title("Ensemble Average Solution")
-    plt.show()
-
-    plt.show()
-    plt.figure()
-    plt.xlabel("x")
-    plt.ylabel("t")
-    plt.pcolormesh(x, jnp.arange(0, nt) * dt, UU.mean(axis=0))
-    plt.colorbar(label='Mean Solution')
-    plt.title("Ensemble Average Solution")
-    plt.show()
