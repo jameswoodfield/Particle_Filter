@@ -16,6 +16,7 @@ def convert_jnp_to_xarray(true, ensemble):
 
 def rmse(observations, ensemble):
     """Calculate the Root Mean Square Error (RMSE) between observations and ensemble predictions.
+    this can be the signal used, or the observations. 
     Args:
         observations (jnp.ndarray): Observed signal with shape (time, space).
         ensemble (jnp.ndarray): Ensemble predictions with shape (time, member, space).
