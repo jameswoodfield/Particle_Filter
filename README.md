@@ -1,4 +1,45 @@
-# Particle Filter
+# ETD Data Assimilation
+
+A sandbox for exploring **Exponential Time Differencing (ETD)** and **Stochastic Integrating Factor (SIF)** methods in the context of **data assimilation** using **particle filters** and **Kalman filters**.
+
+This repository serves as a flexible platform for testing time-stepping schemes, stochastic integration strategies, and data assimilation algorithms for applications in moderately-high-dimensions or stiff systems.
+
+---
+
+## ✨ Features
+- **ETD and SIF time-stepping methods** for stiff/stochastic differential equations
+**Autodifferentiable pipeline** via JAX — supports gradient-based optimization and learning
+- **GPU and CPU compatible** — tested on NVIDIA GPUs and standard CPUs
+- Implementations of: 
+  - **Runge-Kutta(RK)**
+  - **Stochastic (RK)**
+  - **Exponential time differencing (ETDRK)**
+  - **Stochastic  (ETDRK)**
+  - **Integrating Factor Runge Kutta(IFRK)**
+  - **Stochastic (IFRK)**
+
+- Implementations of:
+  - **Particle Filters (PF)**
+  - **Ensemble Kalman Filter(EnKF)**
+
+- Tools for:
+  - Synthetic data generation
+  - Convergence testing
+  - Visualization of ensemble trajectories and filter performance
+  - Configurations for reproducible
+---
+
+## 📁 Repository Structure
+
+```bash
+etd-data-assimilation/
+├── filters/           # Particle & Kalman filtering modules
+├── models/            # ETD, SIF, and other time-stepping schemes
+├── models/ETD_KT_CM_JAX_Vecotrised.py # Dynamical systems (e.g. KS, KdV, SPDEs)
+├── tests/             # unit tests,
+├── Saving/            # Images generated
+├── metrics/           # Some utility functions
+└── README.md          # You're here! Overview of examples
 
 
 ### Example 1: KS EQUATION

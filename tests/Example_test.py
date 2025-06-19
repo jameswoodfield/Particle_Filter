@@ -1,9 +1,10 @@
+import os
+os.environ["JAX_ENABLE_X64"] = "true"
 import pytest
 import jax
 from jax import config
 import jax.numpy as jnp
 import sys
-import os
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
