@@ -3,11 +3,14 @@
 [🏠 Back to Overview](README.md)
 
 ### Example 1: KS + KdV Equations
-In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we demonstrate running the deterministic KdV equation using initial conditions and model parameters from [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py). One can create a new dictionary, and run under different initial conditions, timestep and model parameters. For instance in [Example_1_KS.ipynb](examples/Example_1_KS.ipynb) we demonstate running the Deterministic Kuramoto-Sivashinsky equation under the sensitive initial conditions specified in Kassam and Trefethen (stored in [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py)). 
-
+In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we demonstrate running the deterministic KdV equation using initial conditions and model parameters from [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py). One can create a new dictionary, and run under different initial conditions, timestep and model parameters. For instance, in [Example_1_KS.ipynb](examples/Example_1_KS.ipynb) we demonstate running the Deterministic Kuramoto-Sivashinsky equation under the sensitive initial conditions specified in Kassam and Trefethen (stored in [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py)). 
+| KdV   | KS  |
+| ------------- | ------------- |
+|  <img src="Saving/ex1_KdV_space_time_evolution.png" alt="drawing" width="250"/> | <img src="Saving/ex1_KS_space_time_evolution.png" alt="drawing" width="250"/> |
 ### Example 2: 
 
-In [Example_2_KS_perturbed.ipynb](examples/Example_2_KS_perturbed.ipynb) and [Example_2_KdV_perturbed.ipynb](examples/Example_2_KdV_perturbed.ipynb). We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of order $10^{-8}$, and compute 
+In [Example_2_KS_perturbed.ipynb](examples/Example_2_KS_perturbed.ipynb) and [Example_2_KdV_perturbed.ipynb](examples/Example_2_KdV_perturbed.ipynb). We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of magnitude $10^{-8}$, and compute the change in relative L2 error.
+
 $$
 \begin{align}
 \frac{||u_1 - u_2||_{2}}{||u_2||_{2}}
@@ -15,7 +18,8 @@ $$
 $$
 
 
-We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV has linear growth, KS has exponential growth.
+
+We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV has linear growth, whilst the KS has exponential growth.
 
 | KdV   | KS  |
 | ------------- | ------------- |
