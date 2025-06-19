@@ -132,3 +132,7 @@ dmypy.json
 # the ipynb notebooks, checkpoints
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
+
+#
+.vscode/
+.gitattributes

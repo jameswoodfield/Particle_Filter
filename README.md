@@ -11,6 +11,7 @@ This repository serves as a flexible platform for testing time-stepping schemes,
 ## ✨ Features
 - 🧠 Autodifferentiable via JAX — supports gradient-based optimization and learning
 - ⚙️**GPU and CPU compatible** — tested on NVIDIA GPUs and standard CPUs
+- Spectral spatial discretisation
 - ⏱️ Timestepping: 
   - **Runge-Kutta(RK) and Stochastic Runge-Kutta**
   - **Exponential time differencing (ETDRK) and Stochastic  (ETDRK)**
