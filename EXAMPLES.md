@@ -3,7 +3,7 @@
 [🏠 Back to Overview](README.md)
 
 ### Example 1: KS + KdV Equations
-In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we run the deterministic KdV equation using initial conditions and model parameters from [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py). One can create a dictionary similarly, and run under different initial conditions, timestep and model parameters. 
+In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we demonstrate running the deterministic KdV equation using initial conditions and model parameters from [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py). One can create a new dictionary, and run under different initial conditions, timestep and model parameters. 
 
 In [Example_1_KS.ipynb](examples/Example_1_KS.ipynb) we demonstate running the Deterministic Kuramoto-Sivashinsky equation under the sensitive initial conditions specified in Kassam and Trefethen (stored in [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py)). 
 
@@ -15,13 +15,12 @@ $$
 \end{align}
 $$
 
-![KdV Sensitivity](Saving/KdV_sensitivity.png)
 
 We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV has linear growth, KS has exponential growth.
 
 | KdV   | KS  |
 | ------------- | ------------- |
-|  <img src="Saving/KdV_sensitivity.png" alt="drawing" width="200"/> | <img src="Saving/KS_sensitivity.png" alt="drawing" width="200"/> |
+|  <img src="Saving/KdV_sensitivity.png" alt="drawing" width="250"/> | <img src="Saving/KS_sensitivity.png" alt="drawing" width="250"/> |
 | Log-log | Log log  |
 |  <img src="Saving/KdV_ic_pertubation_error.png" alt="drawing" width="200"/> | <img src="Saving/KS_ic_pertubation_error.png" alt="drawing" width="200"/> |
 
