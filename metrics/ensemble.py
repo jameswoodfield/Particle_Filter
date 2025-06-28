@@ -1,6 +1,7 @@
 import xarray as xr
 import xskillscore as xs
 import jax.numpy as jnp
+import jax
 
 def convert_jnp_to_xarray(true, ensemble):
     """Convert JAX arrays to xarray DataArrays for CRPS calculation.
@@ -42,9 +43,18 @@ def crps(signal, ensemble):
     return jnp.array(crps.values)
 
 def crps_internal(signal, ensemble):
+    """Calculate the Continuous Ranked Probability Score (CRPS) for an ensemble prediction,
+    this is the internal version, which does not use xskillscore. Based on some code for https://arxiv.org/pdf/2502.12775
+    this allows jax implementation and is more efficient and differentiable."""
+    #print("CRPS internal shape:", signal.shape, ensemble.shape)
+
     #reshape from (time, member, space), into (time, space, member)
     ensemble = jnp.moveaxis(ensemble, 1, 2)  # Move member dimension to the last position
-    signal = jnp.moveaxis(signal, 1, 2)  # Move time dimension to the first position
+    signal = jnp.moveaxis(signal, 1, 2)[:,:,0]
+    # print("CRPS internal shape:", signal.shape, ensemble.shape)
+    # print("required shape: (time, space, member)")
+    # print("required shape: (time, space)")
+
     @jax.jit
     def My_CRPS(obs,forcast):
         #Gneiting

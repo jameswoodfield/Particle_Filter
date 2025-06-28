@@ -4,7 +4,7 @@ A sandbox for exploring (stochastic)**Exponential Time Differencing (ETD)** and 
 
 This repository serves as a flexible platform for testing time-stepping schemes, stochastic integration strategies, and data assimilation algorithms for applications in moderately-high-dimensions or stiff systems.
 
-[📘 See Detailed Examples →](EXAMPLES.md)
+## [📘 See Detailed Examples →](EXAMPLES.md)
 
 ---
 
@@ -26,7 +26,7 @@ This repository serves as a flexible platform for testing time-stepping schemes,
   - Synthetic data generation
   - Convergence testing
   - Visualization of ensemble trajectories and filter performance
-  - Configurations for reproducible
+  - Configurations for reproducible experiments
 
 
 ## 📁 Repository Structure
