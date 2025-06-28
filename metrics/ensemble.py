@@ -40,3 +40,25 @@ def crps(signal, ensemble):
     signal_x, ensemble_x = convert_jnp_to_xarray(signal, ensemble)
     crps = xs.crps_ensemble(signal_x, ensemble_x, dim=['space'])
     return jnp.array(crps.values)
+
+def crps_internal(signal, ensemble):
+    #reshape from (time, member, space), into (time, space, member)
+    ensemble = jnp.moveaxis(ensemble, 1, 2)  # Move member dimension to the last position
+    signal = jnp.moveaxis(signal, 1, 2)  # Move time dimension to the first position
+    @jax.jit
+    def My_CRPS(obs,forcast):
+        #Gneiting
+        # assumes for example:  (10,10),(10,10,E) 
+        # based on the following representation of the crps score. 
+        observations = jnp.asarray(obs)
+        forecasts = jnp.asarray(forcast)
+        observations = observations[... , jnp.newaxis]
+        score = jnp.mean(jnp.abs(forecasts - observations), -1)
+        forecasts_diff = (jnp.expand_dims(forecasts, -1) -
+                      jnp.expand_dims(forecasts, -2))
+        score = score - 0.5 * jnp.mean( jnp.abs(forecasts_diff),
+                                       axis=(-2, -1))
+        return score
+
+    crps_values = My_CRPS(signal, ensemble)
+    return jnp.mean(crps_values, axis=1)  # Average over space dimension
