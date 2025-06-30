@@ -4,9 +4,9 @@
 
 ### Example 1: KS + KdV Equations
 In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we demonstrate running one member $E=1$ of a deterministic KdV equation 
-$$\begin{align}
+\\[
 u_t + uu_x + \gamma u_{xxx} = 0,
-\end{align}$$
+\\]
 with dispersive parameter $\gamma = 2.0e-05$
 over the periodic unit interval $x\in[0,1]$, 
 with timestep
@@ -67,7 +67,7 @@ This is interesting in light of the Low dimensional behaviour of the KS equation
 |  <img src="Saving/EX3_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 
 ### Example 3a:
-In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to run a particle filter and output the full trajectories, including the timepoints in between assimilation times. This gives a more comprehensive overview as to the ensemble behaviour including non-da points.
+In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to run a particle filter and output the full trajectories, including the timepoints in between assimilation times.
 | KdV   | KS  |
 | ------------- | ------------- |
 | RMSE:KDV | RMSE:KS  |
@@ -75,7 +75,10 @@ In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to ru
 | CRPS:KDV | CRPS:KS  |
 |  <img src="Saving/EX3a_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3a_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 ### Example 4: 
-In [Example_4_KdV_ensemble.ipynb](examples/Example_3_KS_ensemble.ipynb))
+In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we compare the systematic resampling to the multinomial resampling in context of the KdV equation.
+ <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/>
+ <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/>
+
 
 ### Example 5: 
 These notebooks demonstrate temporal and spatial convergence using a pathwise stochastic travelling wave solution to the KdV equation under constant noise. 

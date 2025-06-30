@@ -22,7 +22,7 @@ This repository serves as a flexible platform for testing time-stepping schemes,
   - **Ensemble Kalman Filter(EnKF)**
 
 - 🔧 Tools for:
-  - Abstract class for development of filtering with sparse data
+  - Abstract class for development of filtering algorithms 
   - Synthetic data generation
   - Convergence testing
   - Visualization of ensemble trajectories and filter performance
