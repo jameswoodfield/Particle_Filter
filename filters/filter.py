@@ -69,7 +69,8 @@ class ParticleFilter:
     
 
 class ParticleFilter_Sequential:
-    """ this differs from the above in that resampling is done conditionally on the ess, based on sequential likelihood update of the weights."""
+    """ this differs from the above in that resampling is done conditionally on the ess,
+    based on sequential likelihood update of the weights."""
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold,resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
@@ -334,7 +335,7 @@ class ParticleFilterAll:
         observation = self.observation_from_signal(signal[-1,:,:], obs_key)
 
         updated_particles = self.update(particles[-1,:,:], observation, sampling_key)
-        particles = particles.at[-1,:,:].set(updated_particles)
+        particles = particles.at[-1].set(updated_particles)
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total, key):
@@ -354,22 +355,28 @@ class ParticleFilterAll:
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
     
+    
+    
 
 
 
 class ParticleFilter_tempered_jittered:
+    # this is a preliminary implementation of a particle filter with tempering and jittering.
+    # we do
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold = 0.5, resampling: str = "default", observation_locations=None,tempering_steps=10,jitter_magnitude=0.001):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
         self.fwd_model = forward_model # forward model for the ensemble
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
+        self.ess_threshold = ess_threshold # threshold for the effective sample size
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
         self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly 
-    
+        self.tempering_steps = tempering_steps  # Number of tempering steps
+        self.jitter_magnitude = jitter_magnitude  # Magnitude of jitter to be added
     def advance_signal(self, signal_position, key):
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
@@ -384,26 +391,31 @@ class ParticleFilter_tempered_jittered:
         observation = jnp.zeros_like(signal)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
+    
+    def mcmc_move(self, particles, observation, key):
+        key, subkey = jax.random.split(key)
+        proposal = particles + self.jitter_magnitude  * jax.random.normal(subkey, particles.shape)
+        particles_observed = jnp.zeros_like(particles)
+        particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        proposal_observed = jnp.zeros_like(proposal)
+        proposal_observed = proposal_observed.at[..., self.observation_locations].set(proposal[..., self.observation_locations])
+        # Compute log likelihood ratio
+        loglik_old = -0.5 * jnp.sum(((particles_observed - observation) / self.sigma)**2)
+        loglik_new = -0.5 * jnp.sum(((proposal_observed - observation) / self.sigma)**2)
+        log_alpha = loglik_new - loglik_old
+        accept = jnp.log(jax.random.uniform(key)) < log_alpha
+
+        return jnp.where(accept, proposal, particles)
+    
 
     def update(self, particles, observation, key):
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        # likelyhood = jnp.exp(log_weights)
-        # weights = weights * likelyhood
-        # ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
-
-        num_tempering_steps = 1
+        
+        num_tempering_steps = self.tempering_steps
         beta_schedule = jnp.linspace(0, 1, num_tempering_steps)
 
-        # def resampling_and_jittering(particles, log_weights, key):
-        #         particles = self.resample(particles, jax.nn.softmax(log_weights), key)
-        #         jitter_key, key = jax.random.split(key)
-        #         jitter = 0.0001 * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.)
-        #         return particles + jitter
-        
-        # def resampling_and_jittering_no_jitter(particles, log_weights, key):
-        #         return self.resample(particles, jax.nn.softmax(log_weights), key)
 
         for beta_idx in range(len(beta_schedule) - 1):
             beta_current = beta_schedule[beta_idx]
@@ -412,20 +424,34 @@ class ParticleFilter_tempered_jittered:
 
             particles_observed = jnp.zeros_like(particles)
             particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
-            log_weights = v_get_log_weight(particles_observed*delta_beta, observation*delta_beta, self.sigma)
+            log_weights = delta_beta*v_get_log_weight(particles_observed, observation, self.sigma)
             ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(log_weights))
             
             particles = jax.lax.cond(
-                    ess < 1/2,
+                    ess < self.ess_threshold,
                     lambda particles: self.resample(particles, jax.nn.softmax(log_weights), key),
                     lambda particles: particles,
                     particles
                 )
-            
-            jitter_key, key = jax.random.split(key)
-            jitter = 0.001 * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.)
-            particles = particles + jitter
-            
+            #if we resample we also jitter the particles to help maintain diversity
+            # key, jitter_key = jax.random.split(key)
+            # particles = jax.lax.cond(
+            #     ess < self.ess_threshold,
+            #     lambda particles: particles + self.jitter_magnitude * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.),
+            #     lambda particles: particles,
+            #     particles
+            # )
+            # # if we do not resample, we still jitter the particles to help maintain diversity for resampling new particles
+            # key, jitter_key = jax.random.split(key)
+            # particles = jax.lax.cond(
+            #     ess > self.ess_threshold,
+            #     lambda particles: particles + 0.01*self.jitter_magnitude * jax.random.uniform(jitter_key, particles.shape, minval=-1., maxval=1.),
+            #     lambda particles: particles,
+            #     particles
+            # )
+            # we use a mcmc move to help maintain diversity in the particles.
+            key, mcmc_key = jax.random.split(key)
+            particles = self.mcmc_move(particles, observation, mcmc_key)
 
         return particles
 
@@ -455,8 +481,12 @@ class ParticleFilter_tempered_jittered:
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
 
+
+
+
 class EnsembleKalmanFilter:
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None):
+    # Simple implementation of the Stochastic Ensemble Kalman Filter (EnKF) as introduced by Evensen (1994).
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, inflation_factor=1.0,localization_radius=1.0):
         self.n_particles = n_particles
         self.n_steps = n_steps
         self.n_dim = n_dim
@@ -464,7 +494,8 @@ class EnsembleKalmanFilter:
         self.signal_model = signal_model
         self.sigma = sigma
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
-
+        self.inflation_factor = inflation_factor # Default inflation factor, can be adjusted later
+        self.localization_radius = localization_radius # Localisation radius for Gaspari-Cohn localisation function
     def advance_signal(self, signal_position, key):
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
@@ -485,6 +516,7 @@ class EnsembleKalmanFilter:
         H = lambda x: x[..., self.observation_locations]
         # Ensemble mean over the first axis.
         assert particles.shape[0] == self.n_particles, "Number of particles does not match n_particles"
+        
         mean = jnp.mean(particles, axis=0)
         X = particles - mean  # anomalies
         Y = jax.vmap(H)(particles)# Apply observation operator to each particle
@@ -500,9 +532,26 @@ class EnsembleKalmanFilter:
         y_obs = H(observation) + obs_perturb
         # perturbed observation shape: (128, 16)
 
+        # localisation
+        state_locs = jnp.linspace(0, 1, self.n_dim)[:, None]          # shape (n, 1)
+        obs_locs = jnp.linspace(0, 1, len(self.observation_locations))[:, None]   # shape (m, 1)
+        D = jnp.abs(state_locs - obs_locs.T)  # broadcasting, shape (n, m)
+        D = jnp.minimum(D, 1 - D)# taking into acount periodic domain,
+        def gaspari_cohn(r):
+            abs_r = jnp.abs(r)
+            c = jnp.where(abs_r <= 1,
+                          1 - 5/3 * abs_r**2 + 5/8 * abs_r**3 + 0.5 * abs_r**4 - 1/4 * abs_r**5,
+                          jnp.where(abs_r <= 2,
+                                    4 - 5 * abs_r + 5/3 * abs_r**2 + 5/8 * abs_r**3 - 0.5 * abs_r**4 + 1/12 * abs_r**5,
+                                    0.0))
+            return c
+        r = D / self.localization_radius
+        L = gaspari_cohn(r)  # shape (n, m), entries between 0 and 1
+        
         # Compute covariances
         # (128, 256).T @ (128, 16) -> (256, 16)
         Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        Pf_HT = Pf_HT * L
         # (128, 16).T @ (128, 16) -> (16, 16)
         S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
         # Kalman gain on lower dimensional observation subspace. 
@@ -513,6 +562,24 @@ class EnsembleKalmanFilter:
         innovations = y_obs - Y # y_{obs}-Hx shape (128, 16)
         update = jax.vmap(lambda innov: K @ innov)(innovations)  # shape: (n_particles, n_dim)
         particles = particles + update 
+
+        def apply_multiplicative_inflation(particles):
+            """Apply multiplicative inflation to the particles."""
+            mean = jnp.mean(particles, axis=0)
+            # Center the particles around the mean
+            X = particles - mean
+            # Apply inflation factor
+            inflated_particles = mean + self.inflation_factor * X
+            return inflated_particles
+        
+        #particles = apply_multiplicative_inflation(particles)
+
+        particles = jax.lax.cond(
+            self.inflation_factor != 1.0,
+            lambda: apply_multiplicative_inflation(particles),
+            lambda: particles
+        )
+
 
         return particles
 
@@ -535,6 +602,7 @@ class EnsembleKalmanFilter:
         return final, all
     
 
+    
 
 # the point is to do full solution output. 
 # this class also outputs the solution when data is not available

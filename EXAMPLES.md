@@ -4,9 +4,9 @@
 
 ### Example 1: KS + KdV Equations
 In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we demonstrate running one member $E=1$ of a deterministic KdV equation 
-\\[
+$$\begin{align}
 u_t + uu_x + \gamma u_{xxx} = 0,
-\\]
+\end{align}$$
 with dispersive parameter $\gamma = 2.0e-05$
 over the periodic unit interval $x\in[0,1]$, 
 with timestep
@@ -75,9 +75,10 @@ In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to ru
 | CRPS:KDV | CRPS:KS  |
 |  <img src="Saving/EX3a_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3a_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 ### Example 4: 
-In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we compare the systematic resampling to the multinomial resampling in context of the KdV equation.
- <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/>
- <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/>
+In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we compare the systematic resampling to the multinomial resampling in context of the KdV equation, where similar behaviour is observed.
+
+ <!-- <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/>
+ <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> -->
 
 
 ### Example 5: 
