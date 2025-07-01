@@ -67,7 +67,8 @@ This is interesting in light of the Low dimensional behaviour of the KS equation
 |  <img src="Saving/EX3_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 
 ### Example 3a:
-In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to run a particle filter and output the full trajectories, including the timepoints in between assimilation times.
+In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to run a particle filter and output the full trajectories, including the timepoints in between assimilation times. Away from observation times, the RMSE and CRPS of the KDV ensemble increases. The RMSE and CRPS of the KS ensemble fail to be bounded near the observation noise of $\sigma = 0.1$.
+
 | KdV   | KS  |
 | ------------- | ------------- |
 | RMSE:KDV | RMSE:KS  |
@@ -75,10 +76,12 @@ In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to ru
 | CRPS:KDV | CRPS:KS  |
 |  <img src="Saving/EX3a_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3a_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 ### Example 4: 
-In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we compare the systematic resampling to the multinomial resampling in context of the KdV equation, where similar behaviour is observed.
+In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we compare the systematic resampling to the multinomial resampling in context of the KdV equation under transport noise. Very similar behaviour is observed, between the Multinomial and Bootstrap resampling algorithms particle filter, both filters have CRPS and RMSE near the observation noise.
 
- <!-- <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/>
- <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> -->
+#### Kdv Results: 
+| RMSE: KdV | CRPS: KdV |
+| ------------- | ------------- |
+| <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/> | <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 
 
 ### Example 5: 

@@ -19,7 +19,11 @@ This repository serves as a flexible platform for testing time-stepping schemes,
 
 - 📈  Data Assimilation:
   - **Particle Filters (PF)**
+    - Bootstrap, 
+    - Resampling: Systematic resampling, multinomial resampling, and default
+    - Conditional resampling on ESS
   - **Ensemble Kalman Filter(EnKF)**
+    - Stochastic ENKF: Localisation () Covariance inflation
 
 - 🔧 Tools for:
   - Abstract class for development of filtering algorithms 
