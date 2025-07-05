@@ -532,11 +532,99 @@ class EnsembleKalmanFilter:
         y_obs = H(observation) + obs_perturb
         # perturbed observation shape: (128, 16)
 
+        
+        # Compute covariances
+        # (128, 256).T @ (128, 16) -> (256, 16)
+        Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        Pf_HT = Pf_HT
+        # (128, 16).T @ (128, 16) -> (16, 16)
+        S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
+        # Kalman gain on lower dimensional observation subspace. 
+        K = Pf_HT @ jnp.linalg.inv(S) # P H^{T} (HPH^T - R)^{-1} # R is the observation noise covariance.
+        # (256, 16) @ (16, 16) -> (256, 16)
+        #K = jax.scipy.linalg.solve(S, Pf_HT.T).T # Kalman gain using solve instead of inverse, if wanting to use jax scipy.
+        # Update
+        innovations = y_obs - Y # y_{obs}-Hx shape (128, 16)
+        update = jax.vmap(lambda innov: K @ innov)(innovations)  # shape: (n_particles, n_dim)
+        particles = particles + update 
+
+
+
+        return particles
+
+    def run_step(self, particles, signal, key):
+        key, obs_key, update_key, pred_key, sig_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
+        observation = self.observation_from_signal(signal, obs_key)
+        particles = self.update(particles, observation, update_key)
+        return particles, signal, observation
+
+    def run(self, initial_particles, initial_signal, n_total, key):
+        def scan_fn(val, i):
+            particles, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles, signal, key)
+            return (particles, signal, next_key), (particles, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
+        return final, all
+
+class EnsembleKalmanFilter_Localisation_Inflation:
+    # Simple implementation of the Stochastic Ensemble Kalman Filter (EnKF) as introduced by Evensen (1994).
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, inflation_factor=1.0,localization_radius=1.0):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+        self.inflation_factor = inflation_factor # Default inflation factor, can be adjusted later
+        self.localization_radius = localization_radius # Localisation radius for Gaspari-Cohn localisation function
+        #If you want strict spatial localization (to cut off correlations within your domain), you must choose
+        #c < \frac{1}{2}
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
+        return signal
+
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)# final,all.
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+    def update(self, particles, observation, key):
+        # Observation space lambda function, 
+        H = lambda x: x[..., self.observation_locations]
+        # Ensemble mean over the first axis.
+        assert particles.shape[0] == self.n_particles, "Number of particles does not match n_particles"
+        
+        mean = jnp.mean(particles, axis=0)
+        X = particles - mean  # anomalies
+        Y = jax.vmap(H)(particles)# Apply observation operator to each particle
+        #print(f"Y shape: {Y.shape}, particles shape: {particles.shape}")
+        # e.g. Y shape: (128, 16), particles shape: (128, 256)
+        y_mean = jnp.mean(Y, axis=0)
+        Y_perturb = Y - y_mean
+        # shape 128,16
+
+        # Observation noise perturbation
+        key, subkey = jax.random.split(key)
+        obs_perturb = self.sigma * jax.random.normal(subkey, shape=Y.shape)
+        y_obs = H(observation) + obs_perturb
+        # perturbed observation shape: (128, 16)
+
         # localisation
         state_locs = jnp.linspace(0, 1, self.n_dim)[:, None]          # shape (n, 1)
         obs_locs = jnp.linspace(0, 1, len(self.observation_locations))[:, None]   # shape (m, 1)
         D = jnp.abs(state_locs - obs_locs.T)  # broadcasting, shape (n, m)
-        D = jnp.minimum(D, 1 - D)# taking into acount periodic domain,
+        D = jnp.minimum(D, 1.0 - D)# taking into acount periodic domain,
         def gaspari_cohn(r):
             abs_r = jnp.abs(r)
             c = jnp.where(abs_r <= 1,
@@ -601,6 +689,135 @@ class EnsembleKalmanFilter:
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
     
+
+class EnsembleKalmanFilter_Localisation_Inflation_learning:
+    # Simple implementation of the Stochastic Ensemble Kalman Filter (EnKF) as introduced by Evensen (1994).
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, inflation_factor=1.0,localization_radius=1.0):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+        self.inflation_factor = inflation_factor # Default inflation factor, can be adjusted later
+        self.localization_radius = localization_radius # Localisation radius for Gaspari-Cohn localisation function
+        #If you want strict spatial localization (to cut off correlations within your domain), you must choose
+        #c < \frac{1}{2}
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
+        return signal
+
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)# final,all.
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+    def update(self, particles, observation, key):
+        # Observation space lambda function, 
+        H = lambda x: x[..., self.observation_locations]
+        # Ensemble mean over the first axis.
+        assert particles.shape[0] == self.n_particles, "Number of particles does not match n_particles"
+        
+        mean = jnp.mean(particles, axis=0)
+        X = particles - mean  # anomalies
+        Y = jax.vmap(H)(particles)# Apply observation operator to each particle
+        #print(f"Y shape: {Y.shape}, particles shape: {particles.shape}")
+        # e.g. Y shape: (128, 16), particles shape: (128, 256)
+        y_mean = jnp.mean(Y, axis=0)
+        Y_perturb = Y - y_mean
+        # shape 128,16
+
+        # Observation noise perturbation
+        key, subkey = jax.random.split(key)
+        obs_perturb = self.sigma * jax.random.normal(subkey, shape=Y.shape)
+        y_obs = H(observation) + obs_perturb
+        # perturbed observation shape: (128, 16)
+
+        # localisation
+        state_locs = jnp.linspace(0, 1, self.n_dim)[:, None]          # shape (n, 1)
+        obs_locs = jnp.linspace(0, 1, len(self.observation_locations))[:, None]   # shape (m, 1)
+        D = jnp.abs(state_locs - obs_locs.T)  # broadcasting, shape (n, m)
+        D = jnp.minimum(D, 1 - D)# taking into acount periodic domain,
+        
+        def smooth_localization(r, R=1.0, alpha=2.0):
+            """
+            Customizable smooth localization function.
+
+            Args:
+                r: distances (nonnegative)
+                R: cutoff distance (support), beyond which weight is 0
+                alpha: sharpness of decay (>=1)
+
+            Returns:
+                Localization weights same shape as r.
+            """
+            scaled = r / R
+            inside = r <= R
+            weight = (1.0 - scaled**2)**alpha
+            return jnp.where(inside, weight, 0.0)
+
+        #r = D / self.localization_radius
+        L = smooth_localization(D,self.localization_radius,self.localisation_alpha)  # shape (n, m), entries between 0 and 1
+        
+        # Compute covariances
+        # (128, 256).T @ (128, 16) -> (256, 16)
+        Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        Pf_HT = Pf_HT * L
+        # (128, 16).T @ (128, 16) -> (16, 16)
+        S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
+        # Kalman gain on lower dimensional observation subspace. 
+        K = Pf_HT @ jnp.linalg.inv(S) # P H^{T} (HPH^T - R)^{-1} # R is the observation noise covariance.
+        # (256, 16) @ (16, 16) -> (256, 16)
+        #K = jax.scipy.linalg.solve(S, Pf_HT.T).T # Kalman gain using solve instead of inverse, if wanting to use jax scipy.
+        # Update
+        innovations = y_obs - Y # y_{obs}-Hx shape (128, 16)
+        update = jax.vmap(lambda innov: K @ innov)(innovations)  # shape: (n_particles, n_dim)
+        particles = particles + update 
+
+        def apply_multiplicative_inflation(particles):
+            """Apply multiplicative inflation to the particles."""
+            mean = jnp.mean(particles, axis=0)
+            # Center the particles around the mean
+            X = particles - mean
+            # Apply inflation factor
+            inflated_particles = mean + self.inflation_factor * X
+            return inflated_particles
+        
+        #particles = apply_multiplicative_inflation(particles)
+
+        particles = jax.lax.cond(
+            self.inflation_factor != 1.0,
+            lambda: apply_multiplicative_inflation(particles),
+            lambda: particles
+        )
+
+
+        return particles
+
+    def run_step(self, particles, signal, key):
+        key, obs_key, update_key, pred_key, sig_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
+        observation = self.observation_from_signal(signal, obs_key)
+        particles = self.update(particles, observation, update_key)
+        return particles, signal, observation
+
+    def run(self, initial_particles, initial_signal, n_total, key):
+        def scan_fn(val, i):
+            particles, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, signal, observation = self.run_step(particles, signal, key)
+            return (particles, signal, next_key), (particles, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
+        return final, all
 
     
 

@@ -4,7 +4,16 @@ A sandbox for exploring (stochastic)**Exponential Time Differencing (ETD)** and 
 
 This repository serves as a flexible platform for testing time-stepping schemes, stochastic integration strategies, and data assimilation algorithms for applications in moderately-high-dimensions or stiff systems.
 
+| KS-waterfall | KdV-waterfall |
+| ------------- | ------------- |
+| <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>  | <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>  |
+
 ## [📘 See Detailed Examples →](EXAMPLES.md)
+
+
+- [Example 3](EXAMPLES.md#example-3): particle filter for the KdV and KS
+
+
 
 ---
 
