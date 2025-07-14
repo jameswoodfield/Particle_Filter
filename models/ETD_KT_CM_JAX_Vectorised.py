@@ -13,7 +13,6 @@ from jax import vmap
 print(jnp.array(1.0).dtype)
 
 
-# TODO: double check on the timestep! 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     """Exponential Time Differencing-Kassam Trefethen-Cox Mathews JAX Vectorised class
     """
@@ -301,7 +300,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             key, key1, key2 = jax.random.split(key, 3)
             noise_advective, noise_forcing = self.draw_noise(n_steps, key1, key2)
         else:
-            noise_advective, noise_forcing = noise,noise
+            noise_advective, noise_forcing = noise, noise# this assumes only one is selected.
 
         self.validate_params()
         self.timestep_validatate()    
@@ -644,7 +643,7 @@ def IFRK4(u,E,E_2,g):
     a = N(v,g)
     u1 = E_2*(v + a/2)
     b = N(u1,g)
-    u2 = E_2*(v + b/2)
+    u2 = E_2*v + b/2# not correct 
     c = N(u2,g)
     u3 = E*v + E_2*c
     d = N(u3,g)
@@ -666,15 +665,16 @@ def IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt):
     #-0.5j * k * params["c_1"]
     # E = jnp.exp(dt * L)
     # E_2 = jnp.exp(dt * L / 2)
+    print('error, this is not supported, use Dealiased_IFSRK4 instead')
     def N(v,RVF,g):
         r = jnp.real( jnp.fft.ifft( v ) )# convert to real space
-        n = (u + 2 * RVF)*u # nonlinearity in real space
+        n = (u + 2 * RVF)*u # nonlinearity in real space 
         return g * jnp.fft.fft(n , axis=-1)# compute derivative in spectral space
 
     a  = N(v,RVF,g)
     v1 = E_2*(v + a/2)
     b  = N(v1,RVF,g)
-    v2 = E_2*(v + b/2)
+    v2 = E_2*v + b/2
     c  = N(v2,RVF,g)
     v3 = E*v + E_2*c
     d  = N(v3,RVF,g)
@@ -690,8 +690,8 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     v = jnp.fft.fft(u,axis=1)
     #g = -.5j * dt * k 
     g = g*dt
-    E = jnp.exp(dt * L)
-    E_2 = jnp.exp(dt * L / 2)
+    E = jnp.exp(dt * L)# we replace them 
+    E_2 = jnp.exp(dt * L / 2) # replaced them
     
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
@@ -699,9 +699,9 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     a = N(v,RVF,g)
-    v1 = E_2*(v + a/2)
+    v1 = E_2*(v + a/2) 
     b = N(v1,RVF,g)
-    v2 = E_2*(v + b/2)
+    v2 = (E_2*v + b/2)
     c = N(v2,RVF,g)
     v3 = E*v + E_2*c
     d = N(v3,RVF,g)
@@ -710,32 +710,6 @@ def Dealiased_IFSRK4(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
     u_next = jnp.real(jnp.fft.ifft(v))
     return u_next
 
-@jax.jit
-def Dealiased_IFSRK4_new(u,E,E_2,g,k,L,xi_p,dW_t,dt,cutoff_ratio=2/3):
-    dW_t = dW_t * jnp.sqrt(dt) / dt
-    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
-    v = jnp.fft.fft(u,axis=1)
-    #g = -.5j * dt * k 
-    g = g*dt
-    E = jnp.exp(dt * L)
-    E_2 = jnp.exp(dt * L / 2)
-    
-    def N(_v,_RVF,g):
-        r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
-        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
-        return g * n
-    a = N(v,RVF,g)
-    v1 = E_2*(v + a/2)
-    b = N(v1,RVF,g)
-    v2 = E_2*(v + b/2)
-    c = N(v2,RVF,g)
-    v3 = E*v + E_2*c
-    d = N(v3,RVF,g)
-    v = E*v + ( E*a + 2*E_2*(b+c) +d )/6
-
-    u_next = jnp.real(jnp.fft.ifft(v))
-    return u_next
 
 
 @jax.jit
@@ -1151,7 +1125,7 @@ KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersio
 KDV_params_2_SALT_LEARNING = {# KdV equation. gaussian initial condition, small dispersion, used for learning.
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 4, "dt": 0.001, "noise_magnitude": 0.01, "nt": 4000,
+    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 0.4, "dt": 0.001, "noise_magnitude": 0.01, "nt": 400,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }

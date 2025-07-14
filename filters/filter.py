@@ -71,7 +71,7 @@ class ParticleFilter:
 class ParticleFilter_Sequential:
     """ this differs from the above in that resampling is done conditionally on the ess,
     based on sequential likelihood update of the weights."""
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold,resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold,resampling: str = "default", observation_locations=None, Driving_Noise=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
@@ -82,13 +82,14 @@ class ParticleFilter_Sequential:
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
         self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
+        self.Driving_Noise = Driving_Noise  # This is the noise that is added to the particles in the forward model, if any.
     
     def advance_signal(self, signal_position, key):
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
     def predict(self, particles, key):
-        prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, self.Driving_Noise, key)#None is the model noise that could be an input.
         return prediction
 
     def observation_from_signal(self, signal, key):
