@@ -115,9 +115,9 @@ This is used to produce the following convergence plot:
 | Convergence |
 ---------------------
 <img src="Saving/EX5_main_Temporal_convergence_RK4_IFRK4_ETDRK4_eSSPIFSRK_P_33.png" alt = "drawing" width = "200"/>
-Demonstrating CS-ETDRK4 attains second order for commutative noise, and can take timesteps at least 128 times larger than RK4, and in some instances having similar accuracy to the IFSRK4 and eSSPIFRK_P_33 scheme when taking a timestep  at timestep $2^7$ larger. 
+Demonstrating CS-ETDRK4 attains second order for commutative noise, and can take timesteps at least 128 times larger than RK4, and in some instances having better accuracy to the IFSRK4. 
 
-In [Example_5_KDV_SpatialConvergence.ipynb](examples/Example_5_KDV_SpatialConvergence) typical spectral convergence is established in space, (exponentially decreasing error). This was constructed slightly pathalogically, as the timestep taken required to not be dominated by temporal error was very small, and a very steep soliton solution was constructed as to mitigate the fact that solitons are not periodic boundary solutions and can lead to discontinuity in derivative issues.
+In [Example_5_KDV_SpatialConvergence.ipynb](examples/Example_5_KDV_SpatialConvergence) typical spectral convergence is established in space, (exponentially decreasing error). This was constructed slightly pathalogically, as the timestep taken required to not be dominated by temporal error was very small, and a very steep soliton solution was constructed as to mitigate the fact that solitons are not periodic boundary condition supporting solutions and can lead to discontinuity in derivatives.
 
 | Spatial convergence   |
 | ------------- |
@@ -154,14 +154,19 @@ We compute the final time relative L2 error on a shorter time window, but compar
 ### Example 6: 
 [Example_6_KdV_high_low_plots.ipynb](examples/Example_6_KdV_high_low_plots.ipynb)
 [Example_6_KS_high_low_plots.ipynb](examples/Example_6_KS_high_low_plots.ipynb)
+[Example_6a_KdV_high_low_plots_stochastic.ipynb](examples/Example_6a_KdV_high_low_plots_stochastic.ipynb)
+[Example_6a_KS_high_low_plots_stochastic.ipynb](examples/Example_6a_KS_high_low_plots_stochastic.ipynb)
 
-These notebooks visualise the deterministic solution, for the KdV and KS equation. 
+
+These notebooks visualise the deterministic solution, for the KdV and KS equation, at high resolution. In addition to the stochastically peturbed version.
 
 | KS-waterfall | KdV-waterfall |
 | ------------- | ------------- |
 | <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>  | <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>  |
 | KS-spacetime | KdV-spacetime |
 | <img src="Saving/KS_High_res.png" alt="drawing" width="200"/>| <img src="Saving/KdV_High_res.png" alt="drawing" width="200"/> |
+| KS-spacetime-stochastic | KdV-spacetime-stochastic |
+| <img src="Saving/KS_High_res_stochastic.png" alt="drawing" width="200"/>| <img src="Saving/KdV_High_res_stochastic.png" alt="drawing" width="200"/> |
 
 
 
