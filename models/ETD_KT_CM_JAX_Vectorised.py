@@ -1177,7 +1177,7 @@ KDV_params_traveling_demo_forced = {
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
     "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 128, "P": 1, "S": 1, "E": 1, "tmax": 10.0, "dt": 0.0001, "noise_magnitude": 1.0, "nt": int(10.0 / 0.0001),
-    "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4', 
+    "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4_forced', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'sin'
 }
 
@@ -1185,7 +1185,15 @@ KDV_params_2_FORCE = {# KdV equation. gaussian initial condition, small dispersi
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
     "xmin":0, "xmax":1, "nx": 256, "P": 0, "S": 1, "E": 2, "tmax": 4, "dt": 0.001, "noise_magnitude": 0.1, "nt": 4000,
-    "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
+    "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4_forced', 
+    "Advection_basis_name": 'none', "Forcing_basis_name": 'sin'
+}
+
+KS_params_Force = {# KS equation, from Kassam Krefethen but with transport noise
+    "equation_name" : 'Kuramoto-Sivashinsky', 
+    "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.1, "c_4": 1,
+    "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 1, "E": 1, "tmax": 150, "dt": 0.25, "noise_magnitude": 0.001, "nt": 600,
+    "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_SETDRK4_forced',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'sin'
 }
 

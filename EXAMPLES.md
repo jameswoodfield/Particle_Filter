@@ -159,6 +159,12 @@ We compute the final time relative L2 error on a shorter time window, but compar
 
 
 These notebooks visualise the deterministic solution, for the KdV and KS equation, at high resolution. In addition to the stochastically peturbed version.
+| KS-waterfall | KdV-waterfall |
+| ------------- | ------------- |
+| <img src="Saving/KS_Waterfall.png" alt="drawing" width="200"/>  | <img src="Saving/KdV_Waterfall.png" alt="drawing" width="200"/>  |
+| KS-waterfall-stochastic | KdV-waterfall-stochastic |
+| <img src="Saving/KS_Waterfall_stochastic.png" alt="drawing" width="200"/>  | <img src="Saving/KdV_Waterfall_stochastic.png" alt="drawing" width="200"/>  |
+
 
 | KS-waterfall | KdV-waterfall |
 | ------------- | ------------- |

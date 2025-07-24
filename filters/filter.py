@@ -363,8 +363,6 @@ class ParticleFilterAll:
 
 class ParticleFilter_tempered_jittered:
     # this is a preliminary implementation of a particle filter with tempering and jittering.
-    # we do
-
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold = 0.5, resampling: str = "default", observation_locations=None,tempering_steps=10,jitter_magnitude=0.001):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
@@ -1110,6 +1108,202 @@ def tempering(key, positions, weights, observation, rel_ess_target):
         iterations += 1
 
 
+
+
+
+### hybrid particle filter enkf filter
+class HybridParticleFilterEnKF:
+    # Hybrid particle filter which should revert to the ENKF if ESS is above threshold. 
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, ess_threshold=0.5, resampling='systematic', Driving_Noise=None):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+        self.ess_threshold = ess_threshold # threshold for the effective sample size
+        self.resample = resamplers[resampling]
+        self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
+        self.Driving_Noise = Driving_Noise 
+    
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
+        return signal
+    
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, self.Driving_Noise, key)#None is the model noise that could be an input.
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
+        # observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+
+    def update_kalman(self, particles, observation, key):
+        H = lambda x: x[..., self.observation_locations]
+        mean = jnp.mean(particles, axis=0)
+        X = particles - mean  
+        Y = jax.vmap(H)(particles)
+        y_mean = jnp.mean(Y, axis=0)
+        Y_perturb = Y - y_mean
+        key, subkey = jax.random.split(key)
+        obs_perturb = self.sigma * jax.random.normal(subkey, shape=Y.shape)
+        y_obs = H(observation) + obs_perturb
+        Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        Pf_HT = Pf_HT
+        S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
+        K = Pf_HT @ jnp.linalg.inv(S)
+        innovations = y_obs - Y 
+        update = jax.vmap(lambda innov: K @ innov)(innovations)  
+        particles = particles + update 
+        return particles
+    
+    def update_sequential_pf(self, particles, weights, observation, key):
+        particles_observed = jnp.zeros_like(particles)
+        particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
+        likelyhood = jnp.exp(log_weights)
+        weights = weights * likelyhood
+        ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
+        particles = jax.lax.cond(
+                    ess < self.ess_threshold, # we resample if ess below threshold and ENKF otherwise.
+                    lambda particles: self.resample(particles, jax.nn.softmax(log_weights), key),
+                    lambda particles: self.update_kalman(particles, observation, key),
+                    particles
+                )
+        return particles, weights
+
+    def run_step(self, particles, weights, signal, key):
+        key, obs_key, update_key, pred_key, sig_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
+        observation = self.observation_from_signal(signal, obs_key)
+        particles,weights = self.update_sequential_pf(particles, weights, observation, update_key)
+        return particles, weights, signal, observation
+    
+    
+    def run(self, initial_particles, initial_weights, initial_signal, n_total, key):
+        """_summary: Runs the initial particles_
+
+        Args:
+            initial_particles (_type_): _description_
+            initial_signal (_type_): _description_
+            n_total (_type_): _n_total is the number of data assimilation proceedures._
+        """
+        def scan_fn(val, i):
+            particles, weights, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, weights, signal, observation = self.run_step(particles, weights, signal, key)
+            return (particles, weights, signal, next_key), (particles, weights, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles,initial_weights, initial_signal, key), jnp.arange(n_total))
+        return final, all
+    
+
+
+
+    
+
+
+
+### hybrid particle filter enkf filter
+class Hybrid_composed_ParticleFilter_of_EnKF:
+    # Hybrid particle filter which resamples from an ENKF update 
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, ess_threshold=0.5, resampling='systematic', Driving_Noise=None):
+        self.n_particles = n_particles
+        self.n_steps = n_steps
+        self.n_dim = n_dim
+        self.fwd_model = forward_model
+        self.signal_model = signal_model
+        self.sigma = sigma
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+        self.ess_threshold = ess_threshold # threshold for the effective sample size
+        self.resample = resamplers[resampling]
+        self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
+        self.Driving_Noise = Driving_Noise 
+    
+    def advance_signal(self, signal_position, key):
+        signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
+        return signal
+    
+    def predict(self, particles, key):
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, self.Driving_Noise, key)#None is the model noise that could be an input.
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
+        # observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+
+
+    def update_kalman(self, particles, observation, key):
+        H = lambda x: x[..., self.observation_locations]
+        mean = jnp.mean(particles, axis=0)
+        X = particles - mean  
+        Y = jax.vmap(H)(particles)
+        y_mean = jnp.mean(Y, axis=0)
+        Y_perturb = Y - y_mean
+        key, subkey = jax.random.split(key)
+        obs_perturb = self.sigma * jax.random.normal(subkey, shape=Y.shape)
+        y_obs = H(observation) + obs_perturb
+        Pf_HT = X.T @ Y_perturb / (self.n_particles - 1)
+        Pf_HT = Pf_HT
+        S = Y_perturb.T @ Y_perturb / (self.n_particles - 1) + self.sigma**2 * jnp.eye(Y.shape[1])
+        K = Pf_HT @ jnp.linalg.inv(S)
+        innovations = y_obs - Y 
+        update = jax.vmap(lambda innov: K @ innov)(innovations)  
+        particles = particles + update 
+        return particles
+    
+    def update_sequential_pf(self, particles, weights, observation, key):
+        particles_observed = jnp.zeros_like(particles)
+        particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
+        likelyhood = jnp.exp(log_weights)
+        weights = weights * likelyhood
+        ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
+        particles = jax.lax.cond(
+                    ess < self.ess_threshold, # we resample if ess below threshold and ENKF otherwise.
+                    lambda particles: self.resample(self.update_kalman(particles, observation, key), jax.nn.softmax(log_weights), key),
+                    lambda particles: particles,
+                    particles
+                )
+        return particles, weights
+
+    def run_step(self, particles, weights, signal, key):
+        key, obs_key, update_key, pred_key, sig_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
+        observation = self.observation_from_signal(signal, obs_key)
+        particles,weights = self.update_sequential_pf(particles, weights, observation, update_key)
+        return particles, weights, signal, observation
+    
+    
+    def run(self, initial_particles, initial_weights, initial_signal, n_total, key):
+        """_summary: Runs the initial particles_
+
+        Args:
+            initial_particles (_type_): _description_
+            initial_signal (_type_): _description_
+            n_total (_type_): _n_total is the number of data assimilation proceedures._
+        """
+        def scan_fn(val, i):
+            particles, weights, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, weights, signal, observation = self.run_step(particles, weights, signal, key)
+            return (particles, weights, signal, next_key), (particles, weights, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles,initial_weights, initial_signal, key), jnp.arange(n_total))
+        return final, all
+    
 
 
 
