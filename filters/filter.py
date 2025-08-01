@@ -36,7 +36,7 @@ class ParticleFilter:
     def update(self, particles, observation, key):
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
-        # since we are always resampling, we do not need to sequentially update the weights
+        # Here we are always resampling, we do not need to sequentially update the weights
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
         particles = self.resample(particles, jax.nn.softmax(log_weights), key)
         return particles
@@ -51,13 +51,7 @@ class ParticleFilter:
         return particles, signal, observation
 
     def run(self, initial_particles, initial_signal, n_total, key):
-        """_summary: Runs the initial particles_
 
-        Args:
-            initial_particles (_type_): _description_
-            initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
-        """
         def scan_fn(val, i):
             particles, signal, key = val
             key, next_key = jax.random.split(key)
@@ -95,18 +89,16 @@ class ParticleFilter_Sequential:
     def observation_from_signal(self, signal, key):
         key, subkey = jax.random.split(key)
         observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
-        # observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
         observation = jnp.zeros_like(signal)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
 
     def update(self, particles, weights, observation, key):
-        " this one differs from the previous class in that the weights are updated."
-        
+        """resampling is done conditionally on the ess,
+        based on sequential likelihood update of the weights."""
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-
         likelyhood = jnp.exp(log_weights)
         weights = weights * likelyhood
         ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
@@ -129,13 +121,7 @@ class ParticleFilter_Sequential:
         return particles, weights, signal, observation
 
     def run(self, initial_particles, initial_weights, initial_signal, n_total, key):
-        """_summary: Runs the initial particles_
 
-        Args:
-            initial_particles (_type_): _description_
-            initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
-        """
         def scan_fn(val, i):
             particles, weights, signal, key = val
             key, next_key = jax.random.split(key)
@@ -229,7 +215,7 @@ class ParticleFilterTJ:
 
             pos_out.append(positions)
             phi = phi_next
-            phi_remaining = 1. - phi
+            phi_remaining = 1.0 - phi
 
             ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(phi_remaining*log_weights))
             #ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(phi*log_weights))
@@ -376,6 +362,7 @@ class ParticleFilter_tempered_jittered:
         self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly 
         self.tempering_steps = tempering_steps  # Number of tempering steps
         self.jitter_magnitude = jitter_magnitude  # Magnitude of jitter to be added
+    
     def advance_signal(self, signal_position, key):
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
@@ -1113,7 +1100,7 @@ def tempering(key, positions, weights, observation, rel_ess_target):
 
 ### hybrid particle filter enkf filter
 class HybridParticleFilterEnKF:
-    # Hybrid particle filter which should revert to the ENKF if ESS is above threshold. 
+    """ Hybrid particle filter: revert to the ENKF if ESS is above threshold."""
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, ess_threshold=0.5, resampling='systematic', Driving_Noise=None):
         self.n_particles = n_particles
         self.n_steps = n_steps
@@ -1138,11 +1125,9 @@ class HybridParticleFilterEnKF:
     def observation_from_signal(self, signal, key):
         key, subkey = jax.random.split(key)
         observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
-        # observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
         observation = jnp.zeros_like(signal)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
-
 
     def update_kalman(self, particles, observation, key):
         H = lambda x: x[..., self.observation_locations]
@@ -1188,13 +1173,6 @@ class HybridParticleFilterEnKF:
     
     
     def run(self, initial_particles, initial_weights, initial_signal, n_total, key):
-        """_summary: Runs the initial particles_
-
-        Args:
-            initial_particles (_type_): _description_
-            initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
-        """
         def scan_fn(val, i):
             particles, weights, signal, key = val
             key, next_key = jax.random.split(key)
@@ -1207,7 +1185,6 @@ class HybridParticleFilterEnKF:
 
 
 
-    
 
 
 
@@ -1308,3 +1285,9 @@ class Hybrid_composed_ParticleFilter_of_EnKF:
 
 
     
+
+
+
+
+
+

@@ -512,7 +512,15 @@ def initial_condition(x, E , name):
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
-
+    elif name == 'cdm':
+        """https://arxiv.org/pdf/2507.17685"""
+        # could not reproduce this papers initial condition setup,
+        def sech(x):
+            return 1.0 / jnp.cosh(x)
+        def u0_rescaled(x):  # x in [0, 4]
+            x_scaled = 10.0 * x
+            return 0.2 * sech(x_scaled - 403.0 / 15.0) + 0.5 * sech(x_scaled - 203.0 / 15.0)
+        ans = u0_rescaled(x)
     else:
         raise ValueError(f"Initial condition {name} not recognised")
     
@@ -1191,9 +1199,18 @@ KDV_params_2_FORCE = {# KdV equation. gaussian initial condition, small dispersi
 
 KS_params_Force = {# KS equation, from Kassam Krefethen but with transport noise
     "equation_name" : 'Kuramoto-Sivashinsky', 
-    "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.1, "c_4": 1,
+    "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
     "xmin": 0, "xmax": 32*jnp.pi, "nx": 256, "P": 0, "S": 1, "E": 1, "tmax": 150, "dt": 0.25, "noise_magnitude": 0.001, "nt": 600,
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_SETDRK4_forced',
+    "Advection_basis_name": 'none', "Forcing_basis_name": 'sin'
+}
+
+
+KS_params_force_cdm = {# KS equation, under initial conditions and parameters similar to Colin, Dan and Manish
+    "equation_name" : 'Kuramoto-Sivashinsky', 
+    "c_0": 0, "c_1": 1, "c_2": 0.03, "c_3": 0.0, "c_4": 1.1,
+    "xmin": 0, "xmax": 4, "nx": 256, "P": 0, "S": 1, "E": 1, "tmax": 150, "dt": 0.25, "noise_magnitude": 0.001, "nt": 600,
+    "initial_condition": 'cdm', "method": 'Dealiased_SETDRK4_forced',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'sin'
 }
 
