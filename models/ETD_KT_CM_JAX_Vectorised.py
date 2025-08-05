@@ -1125,7 +1125,7 @@ KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion, no
 KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersion, constant advevctive noise
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
-    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 4, "dt": 0.001, "noise_magnitude": 0.01, "nt": 4000,
+    "xmin":0, "xmax":1, "nx": 256, "P": 1, "S": 0, "E": 1, "tmax": 4.0, "dt": 0.001, "noise_magnitude": 0.01, "nt": 4000,
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
