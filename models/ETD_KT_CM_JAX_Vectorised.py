@@ -543,6 +543,8 @@ def stochastic_basis_specifier(x, P, name):
     """
     if name == 'sin':
         ans = jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * x * (p + 1)) for p in range(P)])
+    elif name == 'nsin':
+        ans = jnp.array([jnp.sin(2 * jnp.pi * x * (p + 1)) for p in range(P)])
     elif name =='none':
         ans = jnp.zeros([P,x.shape[0]])
     elif name == 'cos':

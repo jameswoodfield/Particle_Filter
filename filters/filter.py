@@ -1220,7 +1220,6 @@ class Hybrid_composed_ParticleFilter_of_EnKF:
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
 
-
     def update_kalman(self, particles, observation, key):
         H = lambda x: x[..., self.observation_locations]
         mean = jnp.mean(particles, axis=0)

@@ -11,28 +11,26 @@ except ImportError:
 import yaml
 from jax import vmap
 print(jnp.array(1.0).dtype)
-
-class ETD_KT_CM_JAX_Vectorised(BaseModel):
-    """Exponential Time Differencing-Kassam Trefethen-Cox Mathews JAX Vectorised class
-    """
+from ml_collections import ConfigDict
+class CGLE_SETD_KT_CM_JAX(BaseModel):
     def __init__(self, params):
         self.params = params
+        self.derived_params = derived_params(params)
+        self.params.L = self.derived_params["L"]
+        self.params.Nt = self.derived_params["Nt"]
+        self.params.dx = self.derived_params["dx"]
 
+        self.x = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx, endpoint=False)
+        self.xx, self.yy = jnp.meshgrid(self.x, self.x)
+        # --- Wavenumber grid (Fourier) ---
+        self.k = 2 * jnp.pi * jnp.fft.fftfreq(self.params.nx, d=self.params.dx)
+        self.kx, self.ky = jnp.meshgrid(self.k, self.k)
+        self.ksq = self.kx**2 + self.ky**2
+        # --- Linear operator L = (1 + i alpha) Δ + 1 ---
+        self.Lhat = (1 + 1j * self.params.alpha) * (-self.ksq) + 1
+        self.E_1, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.Lhat, self.params.nx)
 
-        self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
-        
-    def update_params(self, new_params):
-        """Update the parameters of the model."""
-        self.params = new_params
-        self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
-        self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] )
-        self.k = jnp.fft.fftfreq(self.params.nx, self.dx) * 2 * jnp.pi # additional multiplication by 2pi
-        self.L = -1j * self.k * self.params.c_0 + self.k**2 * self.params.c_2 + 1j * self.k**3 * self.params.c_3 - self.k**4 * self.params.c_4
-        self.g = -0.5j * self.k * self.params.c_1
-        self.E_weights, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.L, self.params.nx)
-        self.stochastic_advection_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.P, self.params.Advection_basis_name)
-        self.stochastic_forcing_basis = self.params.noise_magnitude * stochastic_basis_specifier(self.x, self.params.S, self.params.Forcing_basis_name)
-        self.A1, self.A2, self.B1, self.B2, self.B3, self.E1, self.E2, self.E3, self.E4, self.E5, self.E6, self.E7 = Complex_integration_technique(self.params.dt, self.L, self.params.nx)
+        self.psi0 = initial_condition(self.xx,self.yy,self.params.E,self.params.initial_condition)
 
 
     def timestep_validatate(self):
@@ -135,45 +133,15 @@ def initial_condition(xx,yy,E,name):
         _type_: _array of shape (E,nx)
         consisting of E coppies of the initial condition specified
     """
-    if name == 'sin':
-        ans = jnp.sin(2 * jnp.pi * x)
-
-    elif name == 'compact_bump':
-        x_min = 0.2; x_max = 0.3
-        s = (2 * (x - x_min) / (x_max - x_min)) - 1
-        ans = jnp.exp(-1 / (1 - s**2)) * (jnp.abs(s) < 1)
-
-    elif name == 'Kassam_Trefethen_KS_IC':
-        ans = jnp.cos( x / 16 ) * ( 1 + jnp.sin(x / 16) )
-
-    elif name == 'Kassam_Trefethen_KdV_IC_eq3pt1':
-        A = 25
-        B = 16
-        ans  = 3 * A**2 * jnp.cosh( 0.5 * A * (x+2) )**-2
-        ans += 3 * B**2 * jnp.cosh( 0.5 * B * (x+1) )**-2
-
-    elif name == 'traveling_wave':
-        beta = 3
-        ans  =  12 * beta**2 * jnp.cosh( beta * ( x ) )**-2
-        ans =  jnp.where(ans<1e-7,0,ans)# remove small values little bit wrong.
-    elif name == 'new_traveling_wave':
-        beta = 6*6 # ensure that this is used for x - beta t traveling wave solution. 
-        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
-        #ans =  jnp.where(ans<1e-8,0,ans)#
-    elif name == 'steep_traveling_wave':
-        beta = 8*8 # ensure that this is used for x - beta t traveling wave solution. 
-        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
-    elif name == 'very_steep_traveling_wave':
-        beta = 9*9
-        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
-
-    elif name == 'ultra_steep_traveling_wave':
-        beta = 15*15
-        ans  =  3 * beta * jnp.cosh( (jnp.sqrt(beta)/2) * ( x ) )**-2
-
-    elif name == 'gaussian':
-        A = 1; x0 = 0.5; sigma = 0.1
-        ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
+    if name == 'random':
+        import numpy as np
+        N = xx.shape[0]  # Assuming xx and yy are square grids
+        ans = 0.1 * (np.random.randn(N, N) + 1j * jnp.random.randn(N, N))
+    elif name == 'zero':
+        ans = jnp.zeros_like(xx) + 1j * jnp.zeros_like(yy)
+    elif name == 'chebfun':
+        ans = (xx*1j + yy) * jnp.exp(-0.03 * (xx**2 + yy**2))
+    
 
     else:
         raise ValueError(f"Initial condition {name} not recognised")
@@ -218,16 +186,26 @@ def stochastic_basis_specifier(x, P, name):
 ####-----------------start ETDRK methods----------------------####
 ####----------------------------------------------------------####
 
-def Kassam_Trefethen(dt, L, nx, M=128, R=1):
-    #R = 2 * jnp.max(jnp.abs(L*dt))# contain the spectrum of L.
-    E_1 = jnp.exp(dt * L)
-    E_2 = jnp.exp(dt * L / 2)
-    r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
-    LR = dt * L[:, None] + r[None, :]# dt*L[:] is the center. Radius in new dim
-    Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
-    f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
-    f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
-    f3 = dt * jnp.mean( (-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=-1)
+def Kassam_Trefethen(dt, Lhat, nx, M=128, R=1):
+    E_1 = jnp.exp(dt * Lhat)
+    E_2 = jnp.exp(dt * Lhat / 2)	
+    # --- ETDRK4 φ-function precomputation using contour integral ---
+    M = 64
+    r = jnp.exp(2j * jnp.pi * (jnp.arange(1, M+1) - 0.5) / M)  # unit circle
+    LR = dt * Lhat[..., None] + r                          # shape (N,N,M)
+    Q  = dt * jnp.mean((jnp.exp(LR/2) - 1) / LR, axis=-1)
+    f1 = dt * jnp.mean((-4 - LR + jnp.exp(LR)*(4 - 3*LR + LR**2)) / LR**3, axis=-1)
+    f2 = dt * jnp.mean((4 + 2*LR + jnp.exp(LR)*(-4 + 2*LR)) / LR**3, axis=-1)
+    f3 = dt * jnp.mean((-4 - 3*LR - LR**2 + jnp.exp(LR)*(4 - LR)) / LR**3, axis=-1)
+    # R = 2 * jnp.max(jnp.abs(L*dt))# contain the spectrum of L.
+    # E_1 = jnp.exp(dt * L)
+    # E_2 = jnp.exp(dt * L / 2)
+    # r = R * jnp.exp(2j * jnp.pi * (jnp.arange(1, M + 1) - 0.5) / M)
+    # LR = dt * L[:, None] + r[None, :]# dt*L[:] is the center. Radius in new dim
+    # Q  = dt * jnp.mean( (jnp.exp(LR / 2) - 1) / LR, axis=-1)# trapesium rule performed by mean in the M variable.
+    # f1 = dt * jnp.mean( (-4 - LR + jnp.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=-1)
+    # f2 = dt * jnp.mean( (4 + 2 * LR + jnp.exp(LR) * (-4 + 2*LR)) / LR**3, axis=-1)# 2 times the KT one. 
+    # f3 = dt * jnp.mean( (-4 - 3 * LR - LR**2 + jnp.exp(LR) * (4 - LR)) / LR**3, axis=-1)
     return E_1, E_2, Q, f1, f2, f3
 
 
@@ -261,127 +239,157 @@ def Dealiased_SETDRK4_forced(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, eta_p, 
     return u_next
 
 
+
+
+
+
+def SETDRK4(u, E, E_2, Q, f1, f2, f3, beta, basis, dt, dW, dB):
+    def N(in_field,beta,basis,dt,dW,dB):
+        """ Nonlinear part: N(psi) = - (1 + i*beta) * |psi|^2 * psi + noise """
+        psi =  jnp.fft.ifftn(in_field)# real space (complex)
+        b = - (1 + 1j * beta) * jnp.abs(psi)**2 * (psi) 
+        b = b + jnp.einsum('ijk,i->jk', basis, dW )*1
+        b = b + jnp.einsum('ijk,i->jk', basis, dB )*1
+        return jnp.fft.fftn( b ) # back to fourier space (complex)
+    v = jnp.fft.fftn(u)
+    Nv = N(v,beta,basis,dt,dW,dB) #  N takes fourier -> physical space -> nonlinarity -> fourier
+    a = E_2 * v + Q * Nv
+    Na = N(a,beta,basis,dt,dW,dB)
+    b = E_2 * v + Q * Na
+    Nb = N(b,beta,basis,dt,dW,dB)
+    c = E_2 * a + Q * (2 * Nb - Nv)
+    Nc = N(c,beta,basis,dt,dW,dB)
+    v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
+    u_next = jnp.fft.ifftn( v_next ) 
+    return u_next
+
+
+def get_2d_bj(lambdaxx, lambdayy, dtref, alpha_noise):
+    # alpha is the smoothing parameter associated with cutting off the spectrum.
+    root_qj = jnp.exp( alpha_noise * (lambdaxx**2+lambdayy**2)) # I have a built in imaginary that makes this positive.
+    bj = root_qj*jnp.sqrt(dtref) 
+    bj = bj
+    return bj
+
+def get_twod_dW(bj,kappa,M):
+    import numpy as np
+    nx,ny = bj.shape
+    nnr = jnp.squeeze( jnp.sum( np.random.randn(nx,ny,M,kappa),3) )
+    nnc = jnp.squeeze( jnp.sum( np.random.randn(nx,ny,M,kappa),3) ) # sum over kappa dimension.
+    nn2 = nnr + 1j*nnc 
+    ans = jnp.zeros_like(nn2)
+    tmp = jnp.zeros_like(nn2)
+    ans = ans.at[:,:].set( bj*nn2[:,:])
+    tmp = tmp.at[:,:].set(jnp.fft.ifft2(ans[:,:]))# complex valued function, each are smooth approximations of white noise, alpha
+    return tmp
+
+def MD_ST_Basis(P, parameters, kx2d, ky2d, dt, alpha_noise,kappa):
+    nx, ny = jnp.shape(kx2d)
+    xi_streams = jnp.zeros([P,nx,ny])
+    for p in range(0,P):
+        xi_streams= xi_streams.at[p,:,:].set(parameters[p]*get_twod_dW( bj=get_2d_bj(kx2d, ky2d, dt, alpha_noise), kappa=kappa, M=1 ))
+    return xi_streams
+
 CGLE_params = {# Heat equation. 
     "equation_name" : 'Complex Ginzburg-Landau',  
-    "xmin": 0, "xmax": 1,"nx": 256, "S": 0, "E": 1, "tmax": 16, "dt": 1 / 4,  "noise_magnitude": 0.1, "nt": int(16*4),
-    "initial_condition": 'chebfun', "method": 'Dealiased_SETDRK4',
-    "Advection_basis_name": 'none', "Forcing_basis_name": 'fourier'
+    "nx": 256,        # Grid size
+    "xmin": -50.0,    # Minimum x-coordinate
+    "xmax": 50.0,     # Maximum x-coordinate
+    "dt": 0.1,       # Time step
+    "tmax": 64.0,     # Final time
+    "alpha": 0.0,     # CGLE parameter
+    "beta": 1.5,      # CGLE parameter	
+    "S": 0,
+    "E": 1,
+    "nt": int(64/0.1),
+    "noise_magnitude": 0.1, 
+    "Forcing_basis_name": 'LSP',
+    "initial_condition": 'chebfun',  # Initial condition type
+    "method": 'Dealiased_SETDRK4'
 }
 
+def derived_params(params):
+    L = params["xmax"] - params["xmin"]  # Domain size
+    Nt = int(params["tmax"] / params["dt"])  # Number of time steps
+    dx = (params["xmax"] - params["xmin"]) / params["nx"]
+    return {"L": L, "Nt": Nt, "dx": dx}
+
+def main():
+    import numpy as np
+    # --- Parameters chosen to match chebfun example---
+    params = ConfigDict(CGLE_params)
+    signal_model = CGLE_SETD_KT_CM_JAX(params)
+    xmin, xmax, nx, S, E, tmax, dt, alpha, beta = signal_model.params["xmin"],signal_model.params["xmax"],signal_model.params["nt"],signal_model.params["S"],signal_model.params["E"],signal_model.params["tmax"],signal_model.params["dt"],signal_model.params["alpha"],signal_model.params["beta"]
+    L,Nt,dx = signal_model.params["L"], signal_model.params["Nt"], signal_model.params["dx"]
+    x = signal_model.x
+    xx, yy = signal_model.xx, signal_model.yy
+    kx, ky = signal_model.kx, signal_model.ky
+    ksq = signal_model.ksq
+    Lhat = signal_model.Lhat
+    E_1,E_2,Q,f1,f2,f3 = signal_model.E_1, signal_model.E_2, signal_model.Q, signal_model.f1, signal_model.f2, signal_model.f3
+    
+    np.random.seed(1)
+    #psi0 = 0.1 * (np.
+    psi = signal_model.psi0
+
+    # --- Time loop ---
+    t = 0.0
+    max_mode = 9 # number of modes in the basis. 
+    P = max_mode
+    #x, basis = real_fourier_basis_2d(N, xmin, xmax, max_mode)
+    parameters = 10**-5 * jnp.asarray(jnp.ones(P)); 
+    alpha_noise = 0.25
+    kappa = 5# terms used in the generation of white noise process.
+    basis = MD_ST_Basis(P,parameters,kx, ky, dt, alpha_noise, kappa)
+    basis = basis / jnp.linalg.norm(basis, axis=(1, 2), keepdims=True)*1# normalise basis. 
+    basis = basis*0
+    num_to_plot = min(9, basis.shape[0])  # plot at most 9
+    fig, axs = plt.subplots(3, 3, figsize=(10, 10))
+    for i in range(num_to_plot):
+        ax = axs.flat[i]
+        im = ax.imshow(basis[i], extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="RdBu", aspect='equal')
+        fig.colorbar(im, ax=ax, shrink=0.7)
+    plt.tight_layout()
+    plt.show()
+
+    dWs = np.random.randn(Nt, basis.shape[0])
+    dBs = np.random.randn(Nt, basis.shape[0])
+    # in our solver we require a rescaling of the noise by 1/dt 
+    dWs = dWs * jnp.sqrt(dt)/dt  # Scale by sqrt(dt) for Wiener increments
+    dBs = dBs * jnp.sqrt(dt)/dt  # Scale by sqrt(dt) for Wiener increments 
+    print("Shape of dWs:", dWs.shape)
+    fig = plt.figure(figsize=(4, 4), dpi=150)	
+    for i in range(Nt):
+        psi = SETDRK4(psi, E_1, E_2, Q, f1, f2, f3, beta, basis, dt, dWs[i], dBs[i])	
+        t += dt	
+        # Save the state at specific times
+        if i in [0, Nt // 3, 2 * Nt // 3, Nt - 1]:
+            plt.clf()
+            plt.suptitle(f"Time = {t:.2f}", fontsize=14)
+            plt.title("Real part", fontsize=10)
+            im = plt.imshow(jnp.real(psi), cmap='seismic', origin='lower',extent=[xmin, xmax, xmin, xmax])
+            im.set_clim(-1, 1)  # Set color scale to be fixed between -1 and 1
+            plt.colorbar(im, shrink=0.6)
+            plt.xlabel("x")
+            plt.ylabel("y")
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+            plt.pause(0.001)
+            #plt.savefig(f"psi_snapshot_t{i}_real.", np.real(psi))
+            # plt.savefig(f"psi_snapshot_t{i}_imag.npy", np.imag(psi))
+        if i % 1 == 0:
+            plt.clf()
+            plt.suptitle(f"Time = {t:.2f}", fontsize=14)
+            plt.title("Real part", fontsize=10)
+            im = plt.imshow( np.real(psi), cmap='seismic', origin='lower',extent=[xmin, xmax, xmin, xmax])
+            im.set_clim(-1, 1)  # Set color scale to be fixed between -1 and 1
+            plt.colorbar(im, shrink=0.6)
+            plt.xlabel("x")
+            plt.ylabel("y")
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+            plt.pause(0.001)
+    plt.show(block=True)
+    #plt.savefig("SETDRK4_2D_CGLE.png", dpi=300)
 
 if __name__ == "__main__":
-    #### Below is a testing script to run the code, without instantiating the class.
-    jax.config.update("jax_enable_x64", True)
+    main()
     
-    params = CGLE_params
-    cwd = os.getcwd()
-    xmin, xmax, nx, P, S, E, tmax, dt = params["xmin"],params["xmax"], params["nx"], params["P"],params["S"], params["E"], params["tmax"], params["dt"]
-    E = 1
-    E = params["E"]
-    nt = params["nt"]
-    assert nt*dt == tmax, "nt must be equal to tmax/dt"
-    #dx = (xmax - xmin) / nx
-    #x = jnp.linspace(xmin, xmax, nx, endpoint=False)
-    xf = jnp.linspace(xmin, xmax, nx+1)
-    x = 0.5 * ( xf[1:] + xf[:-1] ) # cell centers
-    dx = x[1]-x[0] # cell width
-    u = initial_condition(x, E, params["initial_condition"])
-    
-    k = jnp.fft.fftfreq(nx, dx, dtype=jnp.complex128) * 2 * jnp.pi
-    L = -1j * k * params["c_0"] + k**2 * params["c_2"] + 1j*k**3 * params["c_3"] - k**4 * params["c_4"]
-    g = -0.5j * k * params["c_1"]
-
-    E_1, E_2, Q, f1, f2, f3 = Kassam_Trefethen(dt, L, nx, M=64, R=10)# we rename the weights
-    nt = round(tmax / dt)
-    uu = jnp.zeros([E, nt, nx])
-    uu = uu.at[:, 0, :].set(u)
-    UU = jnp.zeros([E, nt, nx])
-    UU = UU.at[:, 0, :].set(u)
-    print(params["Forcing_basis_name"])
-    stochastic_advection_basis = params["noise_magnitude"] * stochastic_basis_specifier(x, P, params["Advection_basis_name"])
-    stochastic_forcing_basis   = params["noise_magnitude"] * stochastic_basis_specifier(x, S, params["Forcing_basis_name"])
-    stochastic_advection_basis =  1 * stochastic_advection_basis # scaling the noise for testing purposes.
-    stochastic_forcing_basis   =  1 * stochastic_forcing_basis # scaling the noise for testing purposes.
-    key = jax.random.PRNGKey(0)
-    key1, key2 = jax.random.split(key)
-    dW = jax.random.normal(key1, shape=(nt, E, P),dtype=jnp.float64)
-    dZ = jax.random.normal(key2, shape=(nt, E, S),dtype=jnp.float64)
-    A1, A2 = SETDRK11_params()
-    B1, B2, B3 = SETDRK22_params()
-    E1, E2, E3, E4, E5, E6, E7 = SETDRK33_params()
-    
-
-    u_f = u
-    u1 = u
-    u2 = u
-    u3 = u
-    # u4 = u
-    u5 = u
-    u6 = u
-    u7 = u
-    u8 = u 
-    u9 = u
-    u10 = u
-    u11 = u
-
-    W = jnp.cumsum(dW, axis=0)
-    W = jnp.sqrt(dt) * params["noise_magnitude"] * W
-    W_new = jnp.zeros([nt+1, E, P])
-    W_new = W_new.at[1:,:,:].set(W)
-
-    analytic = jnp.zeros([nt+1, E, nx])
-
-    initial_condition_jitted = jax.jit(initial_condition, static_argnums=(1,2))# jitted with last two arguments frozen
-    def compute_ans(n, x, dt, W_new, xmax, E, initial_condition):
-        return initial_condition_jitted((x - 6*6 * (dt * n) - W_new[n, :, :] + xmax) % (xmax * 2) - xmax, E, initial_condition)
-    
-    compute_ans_vmap = vmap(compute_ans, in_axes=(0, None, None, None, None, None, None))
-    
-    # Generate the range of n values
-    n_values = jnp.arange(nt + 1)
-    # Compute analytic using the vectorized function
-    if P>0:
-        analytic = compute_ans_vmap(n_values, x, dt, W_new, xmax, E, 'new_traveling_wave')
-    print(stochastic_forcing_basis)
-
-
-    for n in range(1, nt):
-        u_f = Dealiased_SETDRK4_forced(u_f,E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, 1*dZ[n, :, :], dt, cutoff_ratio=2/3)
-        #u_f = u_f + 1*stochastic_forcing_basis*dZ[n, :, :]
-        # # SETDRK methods:
-        #ue = analytic[n,0,:]
-        # #u1 = Dealiased_SETDRK11(u1, A1, A2, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u2 = Dealiased_SETDRK22(u2, B1, B2, B3, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u3 = Dealiased_SETDRK33(u3, E1, E2, E3, E4, E5, E6, E7, g, k, stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # # u4 = Dealiased_CSSSPETDRK33(u4, A1, A2, g, k,  stochastic_advection_basis, dW[n, :, :], dt, cutoff_ratio=2/3)
-        # u5 = Dealiased_SETDRK4(u5, E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # #IFSRK methods: 
-        # u6 = Dealiased_IFSRK4(u6,E_1,E_2,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u7 = Dealiased_eSSPIFSRK_P_33(u7,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u8 = Dealiased_eSSPIFSRK_P_22(u8,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # ##u = Dealiased_eSSPIFSRK_P_11(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
-        # ##SRK methods:
-        # u9 = Dealiased_SRK4(u9,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # #uq = Dealiased_EM(uq,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u10 = Dealiased_SSP22(u10,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # u11 = Dealiased_SSP33(u11,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # uu = uu.at[:, n, :].set(u)
-        #UU = UU.at[:, n, :].set(U)
-        if n % 10 == 0:  # Plot every 10 steps for better performance
-            plt.clf()
-            for e in range(E):
-                plt.plot(x,u_f[e, :],label=f'{e + 1} Forced SETDRK4', linewidth=0.5, c='b', linestyle='--', marker='o', markerfacecolor='none',markersize=1)
-                #plt.plot(x, analytic[n,0,:], label=f'{e + 1} Analytic',linewidth=1,c='k',linestyle='-')
-                # plt.plot(x, u2[e, :], label=f'{e + 1} SETDRK22', linewidth=0.25, c='r', linestyle='--', marker='s', markerfacecolor='none')
-                # plt.plot(x, u3[e, :], label=f'{e + 1} SETDRK33', linewidth=0.25, c='g', linestyle='--', marker='^', markerfacecolor='none')
-
-                # plt.plot(x, u5[e, :], label=f'{e + 1} SETDRK4', linewidth=0.5, c='c', linestyle='--', marker='d', markerfacecolor='none')
-                # plt.plot(x, u6[e, :], label=f'{e + 1} IFSRK4', linewidth=0.5, c='y', linestyle='--', marker='p', markerfacecolor='none')
-                # plt.plot(x, u7[e, :], label=f'{e + 1} eSSPIFSRK_P_33', linewidth=0.5, c='k', linestyle='--', marker='+', markerfacecolor='none')
-                # plt.plot(x, u8[e, :], label=f'{e + 1} eSSPIFSRK_P_22', linewidth=0.5, c='orange', linestyle='--', marker='x', markerfacecolor='none')
-                
-                # plt.plot(x, u9[e, :], label=f'{e + 1} SRK4', linewidth=0.5, c='brown', linestyle='--', marker='h', markerfacecolor='none')
-                # plt.plot(x, u10[e, :], label=f'{e + 1} SSP22', linewidth=0.5, c='gray', linestyle='--', marker='D', markerfacecolor='none')
-                # plt.plot(x, u11[e, :], label=f'{e + 1} SSP33', linewidth=0.5, c='olive', linestyle='--', marker='X', markerfacecolor='none')
-            plt.legend()
-            plt.pause(0.001)
