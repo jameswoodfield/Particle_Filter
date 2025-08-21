@@ -292,6 +292,7 @@ class ParticleFilterAll:
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
         self.resample = resamplers[resampling]
+        
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
     def advance_signal(self, signal_position,key):
@@ -305,6 +306,7 @@ class ParticleFilterAll:
     def observation_from_signal(self, signal, key):
         observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
         observation = jnp.zeros_like(signal)
+        print(self.observation_locations)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
 
