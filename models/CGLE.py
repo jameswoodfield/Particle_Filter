@@ -171,7 +171,7 @@ def stochastic_basis_specifier(x,y,P,name):
         ans = jnp.array([ jnp.sin(2 * jnp.pi * (p + 1) * x / 100) for p in range(P)])
     elif name == 'y_sin':
         ans = jnp.array([ jnp.sin(2 * jnp.pi * (p + 1) * y / 100) for p in range(P)])
-
+        
 
     # elif name == 'LSP':
     #     ans = MD_ST_Basis(P,parameters,kx, ky, dt, alpha_noise, kappa)
@@ -288,8 +288,8 @@ CGLE_params = {# Heat equation.
     "dt": 0.1,       # Time step
     "tmax": 64.0,     # Final time
     "alpha": 0.0,     # CGLE parameter
-    "beta": 1.5,      # CGLE parameter	
-    "S": 1,
+    "beta": 1.0,      # CGLE parameter	
+    "S": 3,
     "E": 2,
     "nt": int(64/0.1),
     "noise_magnitude": 0.001, 
