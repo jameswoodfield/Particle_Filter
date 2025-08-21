@@ -282,7 +282,7 @@ def MD_ST_Basis(P, parameters, kx2d, ky2d, dt, alpha_noise,kappa):
 
 CGLE_params = {# Heat equation. 
     "equation_name" : 'Complex Ginzburg-Landau',  
-    "nx": 256,        # Grid size
+    "nx": 128,        # Grid size
     "xmin": -50.0,    # Minimum x-coordinate
     "xmax": 50.0,     # Maximum x-coordinate
     "dt": 0.1,       # Time step
