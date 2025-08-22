@@ -229,8 +229,6 @@ def Kassam_Trefethen(dt, Lhat, nx, M=128, R=1):
 
 #@jax.jit
 def SETDRK4(u, E, E_2, Q, f1, f2, f3, beta, basis, dt, dW, dB):
-    print(u.shape)
-    print(basis.shape,dW.shape,dB.shape)
     def N(in_field,beta,basis,dt,dW,dB):
         """ Nonlinear part: N(psi) = - (1 + i*beta) * |psi|^2 * psi + noise """
         psi =  jnp.fft.ifftn(in_field)# real space (complex)
