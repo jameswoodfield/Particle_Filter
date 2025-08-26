@@ -10,8 +10,6 @@ except ImportError:
     from base import BaseModel
 import yaml
 from jax import vmap
-print(jnp.array(1.0).dtype)
-
 
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
     """Exponential Time Differencing-Kassam Trefethen-Cox Mathews JAX Vectorised class
@@ -512,15 +510,6 @@ def initial_condition(x, E , name):
     elif name == 'gaussian':
         A = 1; x0 = 0.5; sigma = 0.1
         ans = A * jnp.exp(-((x - x0)**2) / (2 * sigma**2))
-    elif name == 'cdm':
-        """https://arxiv.org/pdf/2507.17685"""
-        # could not reproduce this papers initial condition setup,
-        def sech(x):
-            return 1.0 / jnp.cosh(x)
-        def u0_rescaled(x):  # x in [0, 4]
-            x_scaled = 10.0 * x
-            return 0.2 * sech(x_scaled - 403.0 / 15.0) + 0.5 * sech(x_scaled - 203.0 / 15.0)
-        ans = u0_rescaled(x)
     else:
         raise ValueError(f"Initial condition {name} not recognised")
     
@@ -548,6 +537,7 @@ def stochastic_basis_specifier(x, P, name):
     elif name =='none':
         ans = jnp.zeros([P,x.shape[0]])
     elif name == 'cos':
+        nx = len(x)
         ans = jnp.zeros((P, nx))
         for p in range(P):
             ans = ans.at[p, :].set(jnp.cos((p+1)*2*jnp.pi*x))
@@ -557,6 +547,17 @@ def stochastic_basis_specifier(x, P, name):
     elif name == 'constant':
         nx = len(x)
         ans = jnp.ones((P, nx))# each basis function is a constant
+    elif name == 'compact_bump':
+        nx = len(x)
+        xmin, xmax = float(x.min()), float(x.max())
+        centres = jnp.linspace(xmin, xmax, P+2)[1:-1]  # avoid boundary
+        width = (xmax - xmin) / (P+1)
+
+        def bump(x, c):
+            s = (x - c) / (0.5*width)
+            return jnp.where(jnp.abs(s) < 1, jnp.exp(-1.0 / (1 - s**2)), 0.0)
+
+        ans = jnp.array([bump(x, c) for c in centres])
     else:
         raise ValueError(f"Stochastic basis {name} not recognised")
     return ans
@@ -659,10 +660,6 @@ def IFRK4(u,E,E_2,g):
     d = N(u3,g)
     v = E*v + (E*a + 2*E_2*(b+c) +d)/6
     u_next = jnp.real( jnp.fft.ifft(v) )
-
-    # k_1 = N(v,g)
-    # k_2 = N(E_2*(v + k_1/2),
-
     
     return u_next
 

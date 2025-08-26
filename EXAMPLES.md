@@ -18,7 +18,7 @@ $\Delta t= 0.001$, for the
 gaussian initial condition 
 
 $$
-u_0(x) = \exp(-\frac{(x - 0.5)^2}{0.02}).
+u_0(x) = \exp\left(-\frac{(x - 0.5)^2}{0.02}\right).
 $$
 
 We use a ($2/3$-rds dealiased) fast fourier transform spectral method in space using the ETDRK4 of Cox and Mathews $(2002)$ with the Kassam and Trefethen 2005 contour integration technique. We use
@@ -92,7 +92,7 @@ In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to ru
 ### Example 4: 
 In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we demonstrate using either systematic resampling or multinomial resampling in context of the KdV equation under transport noise. Near identical behaviour is observed, and both filters have CRPS and RMSE scores near the observation noise. 
 
-#### Kdv Results: 
+#### KdV Results: 
 | RMSE: KdV | CRPS: KdV |
 | ------------- | ------------- |
 | <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/> | <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
@@ -100,7 +100,8 @@ In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we 
 ---
 
 ### Example 5: 
-These series of notebooks demonstrate temporal and spatial convergence using a pathwise stochastic travelling wave solution to the KdV equation under constant noise. 
+These series of notebooks demonstrate temporal and spatial convergence. 
+---
 
 In [Example_5_KdV_main_Temporal_Convergence.ipynb](examples/Example_5_KdV_main_Temporal_Convergence)
 
@@ -108,28 +109,26 @@ We define a sequence of refined Brownian paths, used to drive the solution of th
 
 
 
-| Travelling Wave- Space time plot |
----------------------
-<img src="Saving/Analytic_Steep_Travelling_Wave.png" alt="drawing" width="200"/>
+| Travelling Wave   | Temporal convergence |
+| ------------- | ------------- |
+|  <img src="Saving/Analytic_Steep_Travelling_Wave.png" alt="drawing" width="200"/> | <img src="Saving/EX5_main_Temporal_convergence_RK4_IFRK4_ETDRK4_eSSPIFSRK_P_33.png" alt = "drawing" width = "200"/>|
 
-The numerical approximations at several temporal resolutions are compared (In terms of the relative L2 error) to the analytic solution, over the entire space time interval. 
-This is used to produce the following convergence plot:
-| Convergence |
----------------------
-<img src="Saving/EX5_main_Temporal_convergence_RK4_IFRK4_ETDRK4_eSSPIFSRK_P_33.png" alt = "drawing" width = "200"/>
 Demonstrating CS-ETDRK4 attains second order for commutative noise, and can take timesteps at least 128 times larger than RK4, and in some instances having better accuracy to the IFSRK4. 
 
-In [Example_5_KDV_SpatialConvergence.ipynb](examples/Example_5_KDV_SpatialConvergence) typical spectral convergence is established in space, (exponentially decreasing error). This was constructed slightly pathalogically, as the timestep taken required to not be dominated by temporal error was very small, and a very steep soliton solution was constructed as to mitigate the fact that solitons are not periodic boundary condition supporting solutions and can lead to discontinuity in derivatives.
-
+___
 | Spatial convergence   |
 | ------------- |
 |  <img src="Saving/convergence_space.png" alt="drawing" width="200"/> |
 
+In [Example_5_KDV_SpatialConvergence.ipynb](examples/Example_5_KDV_SpatialConvergence) typical spectral convergence is established in space, (exponentially decreasing error). This was constructed slightly pathalogically, as the timestep taken required to not be dominated by temporal error was very small, and a very steep soliton solution was constructed as to mitigate the fact that solitons are not periodic boundary condition supporting solutions and can lead to discontinuity in derivatives.
 
 
+
+
+---
 
 In [Example_5_KdV_Temporal_Convergence_Limit_of_small_noise.ipynb](examples/Example_5_KdV_Temporal_Convergence_Limit_of_small_noise.ipynb), 
-We consider the same experiment (as in [Example_5_KdV_main_Temporal_Convergence.ipynb](examples/Example_5_KdV_main_Temporal_Convergence)) but consider noises of decreasing magnitudes $\xi = 1,1/2,1/4,1/8$, and we observe the predicted fourth order convergence in the limit of vanishing noise. We also test convergence at a larger range of timesteps than previously tested up to $\Delta t = 1e^{-3}$, and find that at large timesteps $\Delta t$, we observe $4$-th order behaviour in the CSETDRK method. We note stability at larger timesteps.
+We consider the same experiment (as in [Example_5_KdV_main_Temporal_Convergence.ipynb](examples/Example_5_KdV_main_Temporal_Convergence)) but consider noises of decreasing magnitudes $\xi = 1,1/2,1/4,1/8,0$, and we observe the predicted fourth order convergence in the limit of vanishing noise. We also test convergence at a larger range of timesteps than previously tested up to $\Delta t = 1e^{-3}$, and find that at large timesteps $\Delta t$, we observe $4$-th order behaviour in the CSETDRK method. We note stability at larger timesteps.
 
 Convergence - plots
 | Temporal convergence  | Temporal convergence |
@@ -138,10 +137,11 @@ Convergence - plots
 
 This experiment indicates practical benifit to capturing higher order deterministic term. 
 
+---
 
 In [Example_5_KdV_Temporal_Convergence_ALL_schemes.ipynb](examples/Example_5_KdV_Temporal_Convergence_ALL_schemes.ipynb),
 
-We compute the final time relative L2 error on a shorter time window, but compare a much larger variety of temporal integration schemes including at larger timesteps. 
+We compute the final time relative L2 error for commutative noise:
 
 
 | Second order methods  | Third order methods |
@@ -151,6 +151,21 @@ We compute the final time relative L2 error on a shorter time window, but compar
 | Fourth order methods | Total |
 | ------------- | ------------- |
 |  <img src="Saving/EX5_Temporal_convergence_RK4_IFRK4_ETDRK4.png" alt="drawing" width="200"/> | <img src="Saving/EX5_Temporal_convergence_Allatty.png" alt="drawing" width="200"/> |
+
+---
+
+In [Example_5_KdV_General_Temporal_Convergence_ALL_schemes.ipynb](examples/Example_5_KdV_General_Temporal_Convergence_ALL_schemes.ipynb) we use non-commutative noise and verify $\mathcal{O}(\Delta t^{1/2})$ convergence in the limit of small noise 
+
+| Second order methods  | Third order methods |
+| ------------- | ------------- |
+|  <img src="Saving/EX5_G_Temporal_convergence_SSP22_ETDRK22_eSSPIFSRK_P_22.png" alt="drawing" width="200"/> | <img src="Saving/EX5_G_Temporal_convergence_SSP33_ETDRK3_eSSPIFSRK_P_33.png" alt="drawing" width="200"/> |
+
+| Fourth order methods | Total |
+| ------------- | ------------- |
+|  <img src="Saving/EX5_G_Temporal_convergence_RK4_IFRK4_ETDRK4.png" alt="drawing" width="200"/> | <img src="Saving/EX5_G_Temporal_convergence_Allatty.png" alt="drawing" width="200"/> |
+
+
+
 
 ---
 

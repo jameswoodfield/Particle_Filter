@@ -46,15 +46,24 @@ This repository serves as a flexible platform for testing time-stepping schemes,
 
 ```bash
 etd-data-assimilation/
-├── filters/           # Particle & Kalman filtering modules
-├── models/            # ETD, SIF, and other time-stepping schemes
-├── models/ETD_KT_CM_JAX_Vecotrised.py # Dynamical systems (e.g. KS, KdV, SPDEs)
-├── tests/             # unit tests,
-├── Saving/            # Images generated
-├── metrics/           # Some utility functions
-├── examples/          #Examples of the usage
+├── filters/ #Particle & Kalman filtering modules 
+│   ├── filter.py # particle and Kalman filtering for ETD_KT_CM_JAX_Vecotrised.py
+│   ├── filter_2D.py # ENKF, ETKF for 2d model CGLE.py
+│   └── resampling.py # some resampling algorithms for pf. 
+├── models/ # forward and ensemble models 
+│  ├── ETD_KT_CM_JAX_Vecotrised.py # Dynamical systems (e.g. KS, KdV, SPDEs)
+│  └── CGLE.py # Complex valued Ginzburg Landau equation
+├── tests/             # unit tests
+├── Saving/            # Images from examples
+├── metrics/
+│   └──forecasting metrics 
+├── examples/ 
+│   └──.ipybn      # examples of usage
 └── README.md          # You're here! Overview of examples
 ```
+
+
+
 
 examples/
 

@@ -12,6 +12,7 @@ import yaml
 from jax import vmap
 print(jnp.array(1.0).dtype)
 from ml_collections import ConfigDict
+
 class CGLE_SETD_KT_CM_JAX(BaseModel):
     def __init__(self, params):
         self.params = params
@@ -122,47 +123,20 @@ class CGLE_SETD_KT_CM_JAX(BaseModel):
         return u_out
     
 def initial_condition(xx,yy,E,name):
-    """_Initial condition specifier_
-
-    Args:
-        x (_type_): _mesh x array_
-        E (_type_): _number of ensemble members to initialise_
-        name (_type_): _name of initial condition_
-
-    Returns:
-        _type_: _array of shape (E,nx)
-        consisting of E coppies of the initial condition specified
-    """
     if name == 'random':
         import numpy as np
-        N = xx.shape[0]  # Assuming xx and yy are square grids
+        N = xx.shape[0]
         ans = 0.1 * (np.random.randn(N, N) + 1j * jnp.random.randn(N, N))
     elif name == 'zero':
         ans = jnp.zeros_like(xx) + 1j * jnp.zeros_like(yy)
     elif name == 'chebfun':
         ans = (xx*1j + yy) * jnp.exp(-0.03 * (xx**2 + yy**2))
-    
-
     else:
         raise ValueError(f"Initial condition {name} not recognised")
-    
     ic = jnp.tile(ans, (E, 1, 1))
     return ic
 
 def stochastic_basis_specifier(x,y,P,name):
-    """_Stochastic Basis specifier_
-
-    Args:
-        x (_type_): _mesh array_
-        P (_type_): _number of basis functions_
-        name (_type_): _name of ic_
-
-    Raises:
-        ValueError: _if name not specified_
-
-    Returns:
-        _array_: _(P,nx)_
-    """
     if name == 'sin':
         ans = jnp.array([1 / (p + 1) * jnp.sin(2 * jnp.pi * (p + 1) * x/100) * jnp.sin(2 * jnp.pi * (p + 1) * y/100) for p in range(P)])
     elif name == 'sin_sin':
@@ -171,13 +145,19 @@ def stochastic_basis_specifier(x,y,P,name):
         ans = jnp.array([ jnp.sin(2 * jnp.pi * (p + 1) * x / 100) for p in range(P)])
     elif name == 'y_sin':
         ans = jnp.array([ jnp.sin(2 * jnp.pi * (p + 1) * y / 100) for p in range(P)])
-        
-
-    # elif name == 'LSP':
-    #     ans = MD_ST_Basis(P,parameters,kx, ky, dt, alpha_noise, kappa)
     else:
         raise ValueError(f"Stochastic basis {name} not recognised")
     return ans
+
+def small_scale_noise_basis(XX, YY, P, scale=10.0, key=jax.random.PRNGKey(0)):
+    Nx, Ny = XX.shape
+    keys = jax.random.split(key, P)
+    basis = jnp.stack([
+        jax.random.normal(k, (Nx, Ny)) * jnp.sin(2 * jnp.pi * scale * XX) *
+        jnp.sin(2 * jnp.pi * scale * YY)
+        for k in keys
+    ])
+    return basis
 
 
 ####----------------------------------------------------------####
@@ -196,36 +176,6 @@ def Kassam_Trefethen(dt, Lhat, nx, M=128, R=1):
     f2 = dt * jnp.mean((4 + 2*LR + jnp.exp(LR)*(-4 + 2*LR)) / LR**3, axis=-1)
     f3 = dt * jnp.mean((-4 - 3*LR - LR**2 + jnp.exp(LR)*(4 - LR)) / LR**3, axis=-1)
     return E_1, E_2, Q, f1, f2, f3
-
-
-# @jax.jit
-# def Dealiased_SETDRK4_forced(u, E, E_2, Q, f1, f2, f3, g, k, xi_p, dW_t, eta_p, dB_t, dt, cutoff_ratio=2/3):
-#     dW_t = dW_t*jnp.sqrt(dt)/dt# the timestep is done by the exponential operators, and we require this for the increment,
-#     dB_t = dB_t*jnp.sqrt(dt)/dt
-#     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
-#     RFT = jnp.einsum('jk,lj ->lk',eta_p,dB_t)
-#     hat_RFT = jnp.fft.fft(RFT, axis=-1)
-#     v = jnp.fft.fft(u, axis=-1)
-
-#     def N(_v,_RVF,g,_hat_RFT):
-#         r = jnp.real( jnp.fft.ifft( _v ) )# return u in real space
-#         n = (r + 2*_RVF)*r # g contains 1/2 in it. 
-#         nhat = jnp.fft.fft(n , axis=-1)# go back to spectral space. 
-#         n = dealias_using_k(nhat, k, cutoff_ratio=cutoff_ratio)# dealiasing in spectral space
-#         ans = (g * n) - _hat_RFT 
-#         return ans
-    
-#     Nv = N(v,RVF,g,hat_RFT) 
-#     a = E_2 * v + Q * Nv
-#     Na =  N(a,RVF,g,hat_RFT) 
-#     b = E_2 * v + Q * Na
-#     Nb =  N(b,RVF,g,hat_RFT) 
-#     c = E_2 * a + Q * (2 * Nb - Nv)
-#     Nc =  N(c,RVF,g,hat_RFT) 
-#     v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
-#     u_next = jnp.real( jnp.fft.ifft( v_next, axis=-1 ) )
-#     u_next = u_next #- RFT # add the forcing term in real space.
-#     return u_next
 
 #@jax.jit
 def SETDRK4(u, E, E_2, Q, f1, f2, f3, beta, basis, dt, dW, dB):
@@ -280,19 +230,19 @@ def MD_ST_Basis(P, parameters, kx2d, ky2d, dt, alpha_noise,kappa):
 
 CGLE_params = {# Heat equation. 
     "equation_name" : 'Complex Ginzburg-Landau',  
-    "nx": 128,        # Grid size
+    "nx": int(128*2),        # Grid size
     "xmin": -50.0,    # Minimum x-coordinate
     "xmax": 50.0,     # Maximum x-coordinate
     "dt": 0.1,       # Time step
     "tmax": 64.0,     # Final time
     "alpha": 0.0,     # CGLE parameter
     "beta": 1.0,      # CGLE parameter	
-    "S": 3,
+    "S": 9,
     "E": 2,
     "nt": int(64/0.1),
     "noise_magnitude": 0.001, 
-    "Forcing_basis_name": 'sin_sin',
-    "initial_condition": 'chebfun',  # Initial condition type
+    "Forcing_basis_name": 'sin_sin',#'sin_sin',
+    "initial_condition": 'chebfun',  # Initial condition type specified by chebfuns example
     "method": 'Dealiased_SETDRK4_forced',  # Time-stepping method
 }
 
@@ -304,7 +254,6 @@ def derived_params(params):
 
 def main():
     import numpy as np
-
     # --- Parameters chosen to match chebfun example---
     params = ConfigDict(CGLE_params)
     signal_model = CGLE_SETD_KT_CM_JAX(params)
@@ -330,7 +279,8 @@ def main():
     fig, axs = plt.subplots(3, 3, figsize=(10, 10))
     for i in range(num_to_plot):
         ax = axs.flat[i]
-        im = ax.imshow(basis[i], extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="RdBu", aspect='equal')
+        #print('basis[i]',basis[i].shape,basis[i].dtype,basis[i])
+        im = ax.imshow(jnp.abs(basis[i,:,:]), extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="RdBu", aspect='equal')
         ax.set_title(f"Basis {i+1}")
         fig.colorbar(im, ax=ax, shrink=0.7)
     plt.tight_layout()

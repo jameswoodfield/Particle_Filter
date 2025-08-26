@@ -10,4 +10,3 @@ class BaseModel(ABC):
     @abstractmethod
     def run(self, initial_state, n_steps, noise):
         pass
-
