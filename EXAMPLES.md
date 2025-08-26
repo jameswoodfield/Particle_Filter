@@ -3,28 +3,35 @@
 [🏠 Back to Overview](README.md)
 
 ---
----
-
 
 ### Example 1: KS + KdV Equations
 In [Example_1_KdV.ipynb](examples/Example_1_KdV.ipynb) we demonstrate running one member $E=1$ of a deterministic KdV equation 
-$$\begin{align}
-u_t + uu_x + \gamma u_{xxx} = 0,
-\end{align}$$
+
+$$ 
+u_t + uu_x + \gamma u_{xxx} = 0, 
+$$
+
 with dispersive parameter $\gamma = 2.0e-05$
 over the periodic unit interval $x\in[0,1]$, 
 with timestep
 $\Delta t= 0.001$, for the 
 gaussian initial condition 
-$u_0(x) = \exp(-\frac{(x - 0.5)^2}{0.02})$. We use a ($2/3$-rds dealiased) fast fourier transform spectral method in space using the ETDRK4 of Cox and Mathews $(2002)$ with the Kassam and Trefethen 2005 contour integration technique. We use
+
+$$
+u_0(x) = \exp(-\frac{(x - 0.5)^2}{0.02}).
+$$
+
+We use a ($2/3$-rds dealiased) fast fourier transform spectral method in space using the ETDRK4 of Cox and Mathews $(2002)$ with the Kassam and Trefethen 2005 contour integration technique. We use
 $n_x= 256$ spatial points and use 
 $n_t= 4000$ timesteps, until the final time of $t_{max}= 4$ is reached.
 
 These initial conditions and model parameters are stored in [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py). One can create a new dictionary, and run under different initial conditions, timestep and model parameters. For instance, in [Example_1_KS.ipynb](examples/Example_1_KS.ipynb) we demonstate running the Deterministic Kuramoto-Sivashinsky equation 
-$$\begin{align}
+$$
 u_t + uu_x + u_{xx} + u_{xxxx} = 0,
-\end{align}$$
+$$
 under the initial conditions specified in Kassam and Trefethen (stored in [models/ETD_ETD_KT_CM_JAX_Vectorised.py](models/ETD_KT_CM_JAX_Vectorised.py)). 
+
+---
 
 ### Results of example one
 | KdV   | KS  |
@@ -32,19 +39,14 @@ under the initial conditions specified in Kassam and Trefethen (stored in [model
 |  <img src="Saving/ex1_KdV_space_time_evolution.png" alt="drawing" width="200" height = "200" dpi=300/> | <img src="Saving/ex1_KS_space_time_evolution.png" alt="drawing" width="200" height = "200" dpi=300/> |
 
 ---
----
 
 ### Example 2: 
 
 In [Example_2_KS_perturbed.ipynb](examples/Example_2_KS_perturbed.ipynb) and [Example_2_KdV_perturbed.ipynb](examples/Example_2_KdV_perturbed.ipynb). We run deterministic Kuramoto-Sivashinsky and deterministic KdV equations under small random initial condition pertubations of magnitude $10^{-8}$, and compute the change in relative L2 error.
 
 $$
-\begin{align}
 \frac{||u_1 - u_2||_{2}}{||u_2||_{2}}
-\end{align}
 $$
-
-
 
 We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ respectively. KDV has linear growth, whilst the KS has exponential growth.
 
@@ -54,7 +56,7 @@ We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ r
 | Log-log | Log log  |
 |  <img src="Saving/KdV_ic_pertubation_error.png" alt="drawing" width="200"/> | <img src="Saving/KS_ic_pertubation_error.png" alt="drawing" width="200"/> |
 
-
+---
 
 ### Example 3: 
 In [Example_3_KdV_ensemble.ipynb](examples/Example_3_KdV_ensemble.ipynb) and [Example_3_KS_ensemble.ipynb](examples/Example_3_KS_ensemble.ipynb). We demonstrate how to run a particle filter with the stochastic KS and KdV equation under transport noise. We include subsampled data in both space and time under linear but noisy and sparse observations. 
@@ -73,7 +75,7 @@ This is interesting in light of the Low dimensional behaviour of the KS equation
 | CRPS:KDV | CRPS:KS  |
 |  <img src="Saving/EX3_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 
-
+---
 
 ### Example 3a:
 In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to run a particle filter and output the full trajectories, including the timepoints in between assimilation times. Away from observation times, the RMSE and CRPS of the KDV ensemble increases. The RMSE and CRPS of the KS ensemble fail to be bounded near the observation noise of $\sigma = 0.1$.
@@ -84,6 +86,9 @@ In theses notebook we demonstrate how to use the 'ParticleFilterAll' class to ru
 |  <img src="Saving/EX3a_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/> | <img src="Saving/EX3a_KS_PF_NPF_RMSE.png" alt="drawing" width="200"/> |
 | CRPS:KDV | CRPS:KS  |
 |  <img src="Saving/EX3a_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> | <img src="Saving/EX3a_KS_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
+
+---
+
 ### Example 4: 
 In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we demonstrate using either systematic resampling or multinomial resampling in context of the KdV equation under transport noise. Near identical behaviour is observed, and both filters have CRPS and RMSE scores near the observation noise. 
 
@@ -92,9 +97,6 @@ In [Example_4_KdV_resampling.ipynb](examples/Example_4_KdV_resampling.ipynb) we 
 | ------------- | ------------- |
 | <img src="Saving/EX4_KdV_PF_NPF_RMSE.png" alt="drawing" width="200"/> | <img src="Saving/EX4_KdV_PF_NPF_CRPS.png" alt="drawing" width="200"/> |
 
-
----
----
 ---
 
 ### Example 5: 
@@ -150,6 +152,7 @@ We compute the final time relative L2 error on a shorter time window, but compar
 | ------------- | ------------- |
 |  <img src="Saving/EX5_Temporal_convergence_RK4_IFRK4_ETDRK4.png" alt="drawing" width="200"/> | <img src="Saving/EX5_Temporal_convergence_Allatty.png" alt="drawing" width="200"/> |
 
+---
 
 ### Example 6: 
 [Example_6_KdV_high_low_plots.ipynb](examples/Example_6_KdV_high_low_plots.ipynb)
@@ -175,16 +178,19 @@ These notebooks visualise the deterministic solution, for the KdV and KS equatio
 | <img src="Saving/KS_High_res_stochastic.png" alt="drawing" width="200"/>| <img src="Saving/KdV_High_res_stochastic.png" alt="drawing" width="200"/> |
 
 
+---
 
 ### Example 7: 
 These notebooks visualise the effect of ensemble size on the KS and KDV equation, under the standard bootstrap particle filter.
 
 We see that the Particle filter diverges in the case of KS and does not recover in the case of increasing the ensemble size. In the case of KdV increasing the ensemble size does decrease the error. 
 
+---
 
 ### Example 8:
 Example 8 shows a soliton-soliton interaction, and a basic setup for a neural network. 
 
+---
 
 ### Example 9: 
 Example 9 shows the use of the ensemble Kalman filter. 
