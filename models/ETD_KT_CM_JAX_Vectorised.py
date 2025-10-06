@@ -3,7 +3,6 @@ os.environ["JAX_ENABLE_X64"] = "true"
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-import os
 try:
     from .base import BaseModel
 except ImportError:
@@ -11,19 +10,25 @@ except ImportError:
 import yaml
 from jax import vmap
 
+###########################
+#  ETD-KT-CM JAX  class  #
+###########################
 class ETD_KT_CM_JAX_Vectorised(BaseModel):
-    """Exponential Time Differencing-Kassam Trefethen-Cox Mathews JAX Vectorised class
+    """Exponential Time Differencing-Kassam Trefethen-Cox Mathews JAX Vectorised class:
+    vectorised over ensemble members, noise multiplication over basis functions and time-loop is scanned.
     """
     def __init__(self, params):
         self.params = params
 
-        self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1)
+        self.xf = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx+1) # cell edges
         self.x  = 0.5 * ( self.xf[1:] + self.xf[:-1] ) # cell centers
         self.dx = self.x[1]-self.x[0] # cell width
+
+        # for a more colocation style grid one could use:
         #self.x = jnp.linspace(self.params.xmin, self.params.xmax , self.params.nx, endpoint=False)
         #self.dx = (self.params.xmax - self.params.xmin) / self.params.nx
 
-        self.k = jnp.fft.fftfreq(self.params.nx, self.dx) * 2 * jnp.pi # additional multiplication by 2pi
+        self.k = jnp.fft.fftfreq(self.params.nx, self.dx) * 2 * jnp.pi # wavenumbers
         self.L = -1j * self.k * self.params.c_0 + self.k**2 * self.params.c_2 + 1j * self.k**3 * self.params.c_3 - self.k**4 * self.params.c_4
         self.g = -0.5j * self.k * self.params.c_1
 
@@ -459,6 +464,11 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
 
         return u_out
     
+
+###########################
+#  End of class, functions are below #
+###########################
+    
 def initial_condition(x, E , name):
     """_Initial condition specifier_
 
@@ -551,7 +561,7 @@ def stochastic_basis_specifier(x, P, name):
         nx = len(x)
         xmin, xmax = float(x.min()), float(x.max())
         centres = jnp.linspace(xmin, xmax, P+2)[1:-1]  # avoid boundary
-        width = (xmax - xmin) / (P+1)
+        width = (xmax - xmin) / (P+1) * 0.5
 
         def bump(x, c):
             s = (x - c) / (0.5*width)
@@ -566,13 +576,161 @@ def stochastic_basis_specifier(x, P, name):
 ###--------------------------SRK-----------------------------####
 ###----------------------------------------------------------####
 
+#@jax.jit
+
+def Dealiased_DP8(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    # c values (nodes)
+    import numpy as np
+    # Stage nodes
+    s = 12
+    c = np.array([
+        0.0,
+        1/18,
+        1/12,
+        1/8,
+        5/16,
+        3/8,
+        59/400,
+        93/200,
+        5490023248/9719169821,
+        13/20,
+        1201146811/1299019798,
+        1.0,
+        1.0
+    ], dtype=float)
+
+    # Lower-triangular A matrix (shape s x s)
+    A = np.zeros((s, s), dtype=float)
+
+    A[1,0] = 1/18
+    A[2,0] = 1/48
+    A[2,1] = 1/16
+    A[3,0] = 1/32
+    A[3,2] = 3/32
+    A[4,0] = 5/16
+    A[4,2] = -75/64
+    A[4,3] = 75/64
+    A[5,0] = 3/80
+    A[5,3] = 3/16
+    A[5,4] = 3/20
+    A[6,0] = 29443841/614563906
+    A[6,3] = 77736538/692538347
+    A[6,4] = -28693883/1125000000
+    A[6,5] = 23124283/1800000000
+    A[7,0] = 16016141/946692911
+    A[7,3] = 61564180/158732637
+    A[7,4] = 22789713/633445777
+    A[7,5] = 545815736/2771057229
+    A[7,6] = -180193667/1043307555
+    A[8,0] = 39632708/573591083
+    A[8,3] = -433636366/683701615
+    A[8,4] = -421739975/2616292301
+    A[8,5] = 100302831/723423059
+    A[8,6] = 790204164/839813087
+    A[8,7] = 800635310/3783071287
+    A[9,0] = 246121993/1340847787
+    A[9,3] = -37695042795/15268766246
+    A[9,4] = -309121744/1061227803  # careful: this is now corrected
+    A[9,5] = 12992083/490766935
+    A[9,6] = 6005943493/2108947869
+    A[9,7] = 393006217/1396673457
+    A[9,8] = 123872331/1001029789
+    A[10,0] = -1028468189/846180014
+    A[10,3] = 8478235783/508512852
+    A[10,4] = 1311729495/1432422823
+    A[10,5] = -10304129995/1701304382
+    A[10,6] = -48777925059/3047939560
+    A[10,7] = 15336726248/1032824649
+    A[10,8] = -45442868181/3398467696
+    A[10,9] = 3065993473/597172653
+    A[11,0] = 185892177/718116043
+    A[11,3] = -3185094517/667107341
+    A[11,4] = -477755414/1098053517
+    A[11,5] = 703635378/230739211
+    A[11,6] = 5731566787/1027545527
+    A[11,7] = 5232866602/850066563
+    A[11,8] = -4093664535/808688257
+    A[11,9] = 3962137247/1805957418
+    A[11,10] = 65686358/487910083
+    # Stage 12/13 (last) often identical to 11, used for error estimate
+
+    # b (8th order)
+    b = np.array([
+        14005451/335480064,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -59238493/1068277825,
+        181606767/758867731,
+        561292985/797845732,
+        -1041891430/1371343529,
+        760417239/1151165299,
+        118820643/751138087,
+        -528747749/2220607170
+    ], dtype=float)
+
+    # b_hat (7th order)
+    b_hat = np.array([
+        13451932/455176623,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -808719846/976000145,
+        1757004468/5645159321,
+        656045339/265891186,
+        -3867574721/1518517206,
+        465885868/322736535,
+        53011238/667516719,
+        2/45
+    ], dtype=float)
+    c = jnp.array(c)
+    A = jnp.array(A)
+    b = jnp.array(b)
+    b_hat = jnp.array(b_hat)
+
+    dW_t = dW_t * jnp.sqrt(dt) / dt
+    RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+    v = jnp.fft.fft(u, axis=1)
+
+    def N(_v,_RVF,g):
+        r = jnp.real( jnp.fft.ifft( _v ) )
+        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
+        return g * n
+    
+    def L_function(_v,L):
+        return L * _v
+    
+    def f(_v):
+        return L_function(_v, L) + N(_v, RVF, g)
+    
+    s = A.shape[0]
+    E,n = v.shape
+    k_s = jnp.zeros([s, E, n],dtype=complex) # stages
+    # first stage
+    k_s = k_s.at[0,:,:].set( f(v) ) 
+    # remaining stages
+    for i in range(1, s):
+        vi = v + dt * np.einsum('j,jkl->kl',A[i,:i], k_s[:i])  # zeros above diagonal
+        k_s = k_s.at[i,:,:].set( f(vi) )
+    # combine stages for final step
+    y_next = v + dt * np.einsum('i,ijk->jk',b, k_s)*1
+    #y_hat = v + dt * jnp.einsum('i,ijk->jk',b_hat, k_s) # for error estimate if needed.
+
+    u_next = jnp.real( jnp.fft.ifft(y_next, axis=-1) )
+
+    return u_next
+
+
 @jax.jit
 def Dealiased_SRK4(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+    """ implemented in the classical format. """
     dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
     #g = g * dt # ensure g is multiplied by dt, as it is -.5j*dt*k
-
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
         n = (r + 2*_RVF)*r # g contains 1/2 in it. 
@@ -608,13 +766,14 @@ def Dealiased_SSP22(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
 
 @jax.jit
 def Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+
     dW_t = dW_t * jnp.sqrt(dt) / dt
     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
     v = jnp.fft.fft(u, axis=1)
 
     def N(_v,_RVF,g):
         r = jnp.real( jnp.fft.ifft( _v ) )
-        n = (r + 2*_RVF)*r # g contains 1/2 in it. 
+        n = (r + 2*_RVF)*r
         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)
         return g * n
     
@@ -628,6 +787,35 @@ def Dealiased_EM(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
     v_next = v + dt * k1 
     u_next = jnp.real( jnp.fft.ifft(v_next, axis=-1) )
     return u_next
+
+# @jax.jit
+# def Dealiased_EM_not_functional_ito_strat_converted(u,L,g,k,xi_p,dW_t,dt,cutoff_ratio=2/3):
+#     dW_t = dW_t * jnp.sqrt(dt) / dt
+#     RVF = jnp.einsum('jk,lj ->lk',xi_p,dW_t)
+#     v = jnp.fft.fft(u, axis=1)
+
+#     def N_strat(_v,_RVF,g):# Ito stratonovich correction version 
+#         v = jnp.real( jnp.fft.ifft( _v ) )
+#         n = (_RVF*v)
+#         n = dealias_using_k(jnp.fft.fft(n , axis=-1), k, cutoff_ratio=cutoff_ratio)# bar(xi u)
+
+#         n_1 = v*v
+#         n_1 = dealias_using_k(jnp.fft.fft(n_1 , axis=-1), k, cutoff_ratio=cutoff_ratio) # bar(u^2)
+
+#         n_x_hat = k * n # ik bar (xi u)
+#         n_x = jnp.real( jnp.fft.ifft(n_x_hat) ) # (xi u)_x
+#         a = _RVF * n_x
+#         a = dealias_using_k(jnp.fft.fft(a , axis=-1), k, cutoff_ratio=cutoff_ratio)
+
+#         return g * (a + n_1)
+#     def L_function(_v,L):
+#         return L * _v
+#     def f(_v):
+#         return (L_function(_v, L) + N_strat(_v, RVF, g))
+#     k1 = f(v)
+#     v_next = v + dt * k1 
+#     u_next = jnp.real( jnp.fft.ifft(v_next, axis=-1) )
+#     return u_next
 
 ####----------------------------------------------------------####
 ####-----------------------SIFRK methods----------------------####
@@ -949,7 +1137,8 @@ def dealias_using_k(spectral_field, k, cutoff_ratio=2/3):
         (Orzag 1971), instead suggested keeping 2/3rds of the wavenumbers, 
         This remains specific to the quadratic nonlinearity.
         One performs dealiasing on the nonlinearity, 
-        then differentiates after in spectral space by multiplication._
+        then differentiates after in spectral space by multiplication.
+        Note literature indicates 2/3rds zeroing is more efficients than padding._
 
     Args:
         spectral_field (_type_): _spectral field_
@@ -1077,9 +1266,9 @@ Heat_params = {# Heat equation.
 LinearAdvection_params = {# Linear Advection equation.
     "equation_name" : 'Linear-Advection', 
     "c_0": 0.5, "c_1": 0, "c_2": 0, "c_3": 0.0, "c_4": 0.0, 
-    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 9, "E": 2, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.001, "nt": int(16 * 128),
+    "xmin": 0, "xmax": 1,"nx": 256, "P": 10, "S": 0, "E": 2, "tmax": 16, "dt": 1 / 128,  "noise_magnitude": 0.001, "nt": int(16 * 128),
     "initial_condition": 'sin', "method": 'Dealiased_SETDRK4',
-    "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
+    "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
 
 Burgers_params={# Burgers equation. 
@@ -1098,6 +1287,7 @@ KS_params = {# KS equation, from Kassam Krefethen deterministic.
     "initial_condition": 'Kassam_Trefethen_KS_IC', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
+
 KS_params_SALT = {# KS equation, from Kassam Krefethen but with transport noise
     "equation_name" : 'Kuramoto-Sivashinsky', 
     "c_0": 0, "c_1": 1, "c_2": 1, "c_3": 0.0, "c_4": 1,
@@ -1106,7 +1296,6 @@ KS_params_SALT = {# KS equation, from Kassam Krefethen but with transport noise
     "Advection_basis_name": 'sin', "Forcing_basis_name": 'none'
 }
 
-
 KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
@@ -1114,6 +1303,7 @@ KDV_params = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publicatio
     "initial_condition": 'Kassam_Trefethen_KdV_IC_eq3pt1', "method": 'Dealiased_ETDRK4',
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
+
 KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion, no noise
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
@@ -1121,6 +1311,7 @@ KDV_params_2 = {# KdV equation. gaussian initial condition, small dispersion, no
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'none', "Forcing_basis_name": 'none'
 }
+
 KDV_params_2_SALT = {# KdV equation. gaussian initial condition, small dispersion, constant advevctive noise
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 2e-5, "c_4": 0.0,
@@ -1136,6 +1327,7 @@ KDV_params_2_SALT_LEARNING = {# KdV equation. gaussian initial condition, small 
     "initial_condition": 'gaussian', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
+
 KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_111.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
@@ -1146,7 +1338,7 @@ KDV_params_noise = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/publ
 KDV_params_traveling = {# KdV equation. https://people.maths.ox.ac.uk/trefethen/pdectb/kdv2.pdf
     "equation_name" : 'KdV', 
     "c_0": 0, "c_1": 1, "c_2": 0.0, "c_3": 1, "c_4": 0.0,
-    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 30, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0, "nt": int(1.0 / 0.0001),
+    "xmin": -jnp.pi, "xmax": jnp.pi, "nx": 64, "P": 1, "S": 0, "E": 1, "tmax": 1.0, "dt": 0.0001, "noise_magnitude": 1.0, "nt": int(1.0 / 0.0001),
     "initial_condition": 'traveling_wave', "method": 'Dealiased_SETDRK4', 
     "Advection_basis_name": 'constant', "Forcing_basis_name": 'none'
 }
@@ -1224,10 +1416,11 @@ if __name__ == "__main__":
     #params = KS_params_SALT
     #params = Burgers_params
     #params = LinearAdvection_params
+    #params = KDV_params_traveling
     #params = KDV_params_traveling_demo
     #params = KDV_params_traveling_demo_forced
-
-    params = KDV_params_2_FORCE 
+    params = KDV_params_2_SALT
+    #params = KDV_params_2_FORCE 
     #params = KDV_params_2_FORCE
     #params = KS_params
     cwd = os.getcwd()
@@ -1285,6 +1478,7 @@ if __name__ == "__main__":
     u9 = u
     u10 = u
     u11 = u
+    uq = u
 
     W = jnp.cumsum(dW, axis=0)
     W = jnp.sqrt(dt) * params["noise_magnitude"] * W
@@ -1308,6 +1502,7 @@ if __name__ == "__main__":
 
 
     for n in range(1, nt):
+        #u_f = Dealiased_DP8(u,L,g,k,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
         u_f = Dealiased_SETDRK4_forced(u_f,E_1, E_2, Q, f1, f2, f3, g, k, stochastic_advection_basis, dW[n, :, :], stochastic_forcing_basis, 1*dZ[n, :, :], dt, cutoff_ratio=2/3)
         #u_f = u_f + 1*stochastic_forcing_basis*dZ[n, :, :]
         # # SETDRK methods:
@@ -1324,7 +1519,7 @@ if __name__ == "__main__":
         # ##u = Dealiased_eSSPIFSRK_P_11(u,E_1,g,k,L,stochastic_advection_basis, dW[n, :, :],dt,cutoff_ratio=2/3)
         # ##SRK methods:
         # u9 = Dealiased_SRK4(u9,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
-        # #uq = Dealiased_EM(uq,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
+        uq = Dealiased_EM(uq,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         # u10 = Dealiased_SSP22(u10,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         # u11 = Dealiased_SSP33(u11,L,g,k,stochastic_advection_basis,dW[n, :, :],dt,cutoff_ratio=2/3)
         # uu = uu.at[:, n, :].set(u)
@@ -1332,7 +1527,8 @@ if __name__ == "__main__":
         if n % 10 == 0:  # Plot every 10 steps for better performance
             plt.clf()
             for e in range(E):
-                plt.plot(x,u_f[e, :],label=f'{e + 1} Forced SETDRK4', linewidth=0.5, c='b', linestyle='--', marker='o', markerfacecolor='none',markersize=1)
+                plt.plot(x,u_f[e, :],label=f'{e + 1} SETDRK4', linewidth=0.5, c='k', linestyle='--', marker='o', markerfacecolor='none',markersize=1)
+                plt.plot(x,uq[e, :],label=f'{e + 1} EM', linewidth=0.5, c='b', linestyle='--', marker='o', markerfacecolor='none',markersize=1)
                 #plt.plot(x, analytic[n,0,:], label=f'{e + 1} Analytic',linewidth=1,c='k',linestyle='-')
                 # plt.plot(x, u2[e, :], label=f'{e + 1} SETDRK22', linewidth=0.25, c='r', linestyle='--', marker='s', markerfacecolor='none')
                 # plt.plot(x, u3[e, :], label=f'{e + 1} SETDRK33', linewidth=0.25, c='g', linestyle='--', marker='^', markerfacecolor='none')

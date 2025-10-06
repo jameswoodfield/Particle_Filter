@@ -2,7 +2,7 @@
 
 A sandbox for exploring (stochastic)**Exponential Time Differencing (ETD)** and **Stochastic Integrating Factor (SIF)** methods in the context of **data assimilation** using **particle filters** and **Kalman filters**.
 
-This repository serves as a flexible platform for testing time-stepping schemes, stochastic integration strategies, and data assimilation algorithms for applications in moderately-high-dimensions or stiff systems.
+This repository serves as a flexible platform for testing time-stepping schemes, stochastic integration strategies, and data assimilation algorithms.
 
 | KS-waterfall | KdV-waterfall |
 | ------------- | ------------- |

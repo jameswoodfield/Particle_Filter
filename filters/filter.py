@@ -8,7 +8,7 @@ from .resampling import resamplers
 class ParticleFilter:
 
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
-        self.n_particles = n_particles
+        self.n_particles = n_particles # number of particles in the ensemble
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
         self.fwd_model = forward_model # forward model for the ensemble
@@ -344,10 +344,12 @@ class ParticleFilterAll:
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
     
-    
-    
 
 
+
+
+
+    
 
 class ParticleFilter_tempered_jittered:
     # this is a preliminary implementation of a particle filter with tempering and jittering.

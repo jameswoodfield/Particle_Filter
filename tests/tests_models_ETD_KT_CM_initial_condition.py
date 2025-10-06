@@ -16,10 +16,10 @@ from models.ETD_KT_CM_JAX_Vectorised import stochastic_basis_specifier
 ])
 @pytest.mark.parametrize("P", [1, 3, 5])
 @pytest.mark.parametrize("name", ["sin", "nsin", "none", "cos", "random", "constant"])
+
 def test_shape(x, P, name):
     basis = stochastic_basis_specifier(x, P, name)
     assert basis.shape == (P, len(x))
-
 
 def test_sin_basis(x=jnp.linspace(0, 1, 10), P=2):
     basis = stochastic_basis_specifier(x, P, "sin")

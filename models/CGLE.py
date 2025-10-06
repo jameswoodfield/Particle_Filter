@@ -21,7 +21,7 @@ class CGLE_SETD_KT_CM_JAX(BaseModel):
         self.params.Nt = self.derived_params["Nt"]
         self.params.dx = self.derived_params["dx"]
 
-        self.x = jnp.linspace(self.params.xmin, self.params.xmax, self.params.nx, endpoint=False)
+        self.x = jnp.linspace(self.params.xmin+self.params.dx, self.params.xmax, self.params.nx, endpoint=False)
         self.xx, self.yy = jnp.meshgrid(self.x, self.x)
         # --- Wavenumber grid (Fourier) ---
         self.k = 2 * jnp.pi * jnp.fft.fftfreq(self.params.nx, d=self.params.dx)
@@ -179,6 +179,7 @@ def Kassam_Trefethen(dt, Lhat, nx, M=128, R=1):
 
 #@jax.jit
 def SETDRK4(u, E, E_2, Q, f1, f2, f3, beta, basis, dt, dW, dB):
+    # this takes two components of noise, for stochastic forcing. 
     def N(in_field,beta,basis,dt,dW,dB):
         """ Nonlinear part: N(psi) = - (1 + i*beta) * |psi|^2 * psi + noise """
         psi =  jnp.fft.ifftn(in_field)# real space (complex)
@@ -230,7 +231,7 @@ def MD_ST_Basis(P, parameters, kx2d, ky2d, dt, alpha_noise,kappa):
 
 CGLE_params = {# Heat equation. 
     "equation_name" : 'Complex Ginzburg-Landau',  
-    "nx": int(128*2),        # Grid size
+    "nx": int(128),        # Grid size
     "xmin": -50.0,    # Minimum x-coordinate
     "xmax": 50.0,     # Maximum x-coordinate
     "dt": 0.1,       # Time step

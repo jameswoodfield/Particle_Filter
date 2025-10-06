@@ -8,7 +8,7 @@ from .resampling import resamplers
 
 class EnsembleKalmanFilter_2D:
     # Simple implementation of the Stochastic Ensemble Kalman Filter (EnKF) as introduced by Evensen (1994).
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, inflation_factor=1.0,localization_radius=1.0,relaxation_factor=1.0):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, observation_locations=None, inflation_factor=1.0,localization_radius=1.0,relaxation_factor=1.0,observation_operator=None):
         self.n_particles = n_particles
         self.n_steps = n_steps
         self.n_dim = n_dim
@@ -25,6 +25,33 @@ class EnsembleKalmanFilter_2D:
         else:
             self.observation_locations = jnp.array(observation_locations) 
         # self.obs_indices = [i * ny + j for (i, j) in self.observation_locations]
+        if observation_operator is None:
+            self.H = self.default_observation_operator
+            self.Hp = self.default_observation_projector
+            #self.H = lambda x: jnp.abs(x[0,0., self.observation_locations[:,0], self.observation_locations[:,1]])
+            #self.Hp = lambda x: jnp.abs(x[..., self.observation_locations[:,0], self.observation_locations[:,1]])
+        else:
+            self.H = observation_operator
+
+    def default_observation_operator(self, x):
+        def H(x):
+            i_idx = self.observation_locations[:, 0]
+            j_idx = self.observation_locations[:, 1]
+            return jnp.abs(x[0, 0, i_idx, j_idx]) # projects out Ensemble dimension and time dimension.
+        return H(x)
+    
+    def default_observation_projector(self, x):
+        def H(x):
+            i_idx = self.observation_locations[:, 0]
+            j_idx = self.observation_locations[:, 1]
+            return jnp.abs(x[..., i_idx, j_idx]) # keeps all the other dimensions.
+        return H(x)
+
+    def observation_from_signal(self, signal, key):
+        key, subkey = jax.random.split(key)
+        obs = self.Hp(signal)[0,0,...]  # we have an additional two dimensions, one is the ensemble member, the other is more to do with jax.
+        obs = obs + self.sigma * jax.random.normal(subkey, shape=obs.shape)
+        return obs
 
     def advance_signal(self, signal_position, key):
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
@@ -33,18 +60,6 @@ class EnsembleKalmanFilter_2D:
     def predict(self, particles, key):
         prediction, _ = self.fwd_model.run(particles, self.n_steps, None, key)# final,all.
         return prediction
-
-    def observation_from_signal(self, signal, key):
-        key, subkey = jax.random.split(key)
-
-        def H(x):
-            i_idx = self.observation_locations[:, 0]
-            j_idx = self.observation_locations[:, 1]
-            return jnp.abs(x[0, 0, i_idx, j_idx])
-        
-        obs = H(signal)  # Apply the observation operator H
-        obs = obs + self.sigma * jax.random.normal(subkey, shape=obs.shape)
-        return obs
 
     def update(self, particles, observation, key):
         """
@@ -58,13 +73,14 @@ class EnsembleKalmanFilter_2D:
         #print(f"Flattened particles shape: {flat_particles.shape}") # (n_particles, nx*ny)
 
         # Observation operator H
-        H = lambda x: jnp.abs(x[...,self.observation_locations[:, 0], self.observation_locations[:, 1]])
+        #H = lambda x: jnp.abs(x[...,self.observation_locations[:, 0], self.observation_locations[:, 1]])
+        
         n_obs = len(self.observation_locations[:, 0])
 
         mean = jnp.mean(flat_particles, axis=0)
         X = flat_particles - mean  # anomalies
 
-        Y = jax.vmap(H)(particles).reshape(n_particles, n_obs )  # shape (n_particles, n_obs)
+        Y = jax.vmap(self.Hp)(particles).reshape( n_particles, n_obs )  # shape (n_particles, n_obs)
         #print(f"Y shape after applying observation operator: {Y.shape}")  # (n_particles, n_obs)
         y_mean = jnp.mean(Y, axis=0)
         Y_perturb = Y - y_mean
@@ -132,7 +148,7 @@ class EnsembleKalmanFilter_2D:
         final, all = jax.lax.scan(scan_fn, (initial_particles, initial_signal, key), jnp.arange(n_total))
         return final, all
     
-
+    
 
 
 class Ensemble_Transform_Kalman_Filter_2D:
