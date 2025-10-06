@@ -358,11 +358,6 @@ NS_params_additive = {# Heat equation.
 }
 
 
-
-
-
-
-
 def derived_params(params):
     L = params["xmax"] - params["xmin"]  # Domain size
     Nt = int(params["tmax"] / params["dt"])  # Number of time steps

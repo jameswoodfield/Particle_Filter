@@ -36,7 +36,7 @@ under the initial conditions specified in Kassam and Trefethen (stored in [model
 ### Results of example one
 | KdV   | KS  |
 | ------------- | ------------- |
-|  <img src="Saving/ex1_KdV_space_time_evolution.png" alt="drawing" width="200" height = "200" dpi=300/> | <img src="Saving/ex1_KS_space_time_evolution.png" alt="drawing" width="200" height = "200" dpi=300/> |
+|  <img src="Saving/Example_1_KdV_basic_run/ex1_KdV_space_time_evolution.png" alt="drawing" width="200" height = "200" dpi=300/> | <img src="Saving/Example_1_KS_basic_run/ex1_KS_space_time_evolution.png" alt="drawing" width="200" height = "200" dpi=300/> |
 
 ---
 
@@ -52,9 +52,9 @@ We observe initial condition sensitivities of magnitudes $10^{8}$ and $10^{1}$ r
 
 | KdV   | KS  |
 | ------------- | ------------- |
-|  <img src="Saving/KdV_sensitivity.png" alt="drawing" width="250"/> | <img src="Saving/KS_sensitivity.png" alt="drawing" width="250"/> |
+|  <img src="Saving/Example_2_KdV_sensitivity/KdV_sensitivity.png" alt="drawing" width="250"/> | <img src="Saving/Example_2_KS_sensitivity/KS_sensitivity.png" alt="drawing" width="250"/> |
 | Log-log | Log log  |
-|  <img src="Saving/KdV_ic_pertubation_error.png" alt="drawing" width="200"/> | <img src="Saving/KS_ic_pertubation_error.png" alt="drawing" width="200"/> |
+|  <img src="Saving/Example_2_KS_sensitivity/KS_ic_pertubation_error.png" alt="drawing" width="200"/> | <img src="" alt="drawing" width="200"/> |
 
 ---
 
