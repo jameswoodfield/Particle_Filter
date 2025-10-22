@@ -15,6 +15,7 @@ class NS_SETD_KT_CM_JAX(BaseModel):
     # handle case by case considerations. 
     def __init__(self, params):
         self.params = params
+        self.timestep_validatate()
         self.derived_params = derived_params(params)
         self.params.L = self.derived_params["L"]
         self.params.Nt = self.derived_params["Nt"]
@@ -89,19 +90,19 @@ class NS_SETD_KT_CM_JAX(BaseModel):
             key, key1, key2, key3 = jax.random.split(key, 4)
             noise_salt, noise_sflt, noise_forcing = self.draw_noise(n_steps, key1, key2, key3)
         else:
-            noise_salt, noise_sflt, noise_forcing = noise, noise, noise# this assumes only one is selected.
+            noise_salt, noise_sflt, noise_forcing = noise[0], noise[1], noise[2]
 
         self.validate_params()
         self.timestep_validatate()    
 
         if self.params.method == 'Dealiased_SETDRK4':
-            def scan_fn(y, i):
-                y_next = self.step_Dealiased_SETDRK4(y, noise_salt[i], noise_sflt[i],noise_forcing[i])
+            def scan_fn(y, noise):
+                y_next = self.step_Dealiased_SETDRK4(y, noise[0], noise[1], noise[2])
                 return y_next, y_next
         else:
             raise ValueError(f"Method {self.params.method} not recognised")
         
-        u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
+        u_out = jax.lax.scan(scan_fn, initial_state, (noise_salt, noise_sflt, noise_forcing))
 
         return u_out
     
