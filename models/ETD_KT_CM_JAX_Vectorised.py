@@ -309,69 +309,83 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.timestep_validatate()    
         ###SETDRK###
         if self.params.method == 'Dealiased_ETDRK4':
-            def scan_fn(y, i):
-                y_next = self.step_Dealiased_ETDRK4(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.step_Dealiased_ETDRK4(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SETDRK4_forced':
-            def scan_fn(y, i):
-                y_next = self.step_Dealiased_SETDRK4_forced(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.step_Dealiased_SETDRK4_forced(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SETDRK4':
-            def scan_fn(y,i):
-                y_next = self.step_Dealiased_SETDRK4(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.step_Dealiased_SETDRK4(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SETDRK33':
-            def scan_fn(y,i):
-                y_next = self.step_Dealiased_SETDRK33(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.step_Dealiased_SETDRK33(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SETDRK22':
-            def scan_fn(y,i):
-                y_next = self.step_Dealiased_SETDRK22(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.step_Dealiased_SETDRK22(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SETDRK11':
-            def scan_fn(y,i):
-                y_next = self.step_Dealiased_SETDRK11(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.step_Dealiased_SETDRK11(y, noise_advective, noise_forcing)
                 return y_next, y_next
         ###IFSTK###
         elif self.params.method == 'Dealiased_IFSRK4':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_IFSRK4(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_IFSRK4(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_eSSPIFSRK_P_33':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_eSSPIFSRK_P_33(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_eSSPIFSRK_P_22':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_eSSPIFSRK_P_22(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_eSSPIFSRK_P_22(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_eSSPIFSRK_P_11':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_eSSPIFSRK_P_11(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_eSSPIFSRK_P_11(y, noise_advective, noise_forcing)
                 return y_next, y_next
         
         ###SRK###
         elif self.params.method == 'Dealiased_SRK4':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_SRK4(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_SRK4(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SSP33':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_SSP33(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_SSP33(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_SSP22':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_SSP22(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_SSP22(y, noise_advective, noise_forcing)
                 return y_next, y_next
         elif self.params.method == 'Dealiased_EM':
-            def scan_fn(y,i):
-                y_next = self.Dealiased_EM(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise_tuple):
+                noise_advective, noise_forcing = noise_tuple
+                y_next = self.Dealiased_EM(y, noise_advective, noise_forcing)
                 return y_next, y_next
             
         else:
             raise ValueError(f"Method {self.params.method} not recognised")
         
-        u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
+        u_out = jax.lax.scan(scan_fn, initial_state, (noise_advective, noise_forcing))
 
         return u_out
     
