@@ -16,6 +16,7 @@ from ml_collections import ConfigDict
 class CGLE_SETD_KT_CM_JAX(BaseModel):
     def __init__(self, params):
         self.params = params
+        self.timestep_validatate()
         self.derived_params = derived_params(params)
         self.params.L = self.derived_params["L"]
         self.params.Nt = self.derived_params["Nt"]
@@ -87,19 +88,19 @@ class CGLE_SETD_KT_CM_JAX(BaseModel):
             key, key1, key2 = jax.random.split(key, 3)
             noise_advective, noise_forcing = self.draw_noise(n_steps, key1, key2)
         else:
-            noise_advective, noise_forcing = noise, noise# this assumes only one is selected.
+            noise_advective, noise_forcing = noise[0], noise[1]
 
         self.validate_params()
         self.timestep_validatate()    
         ###SETDRK###
         if self.params.method == 'Dealiased_SETDRK4_forced':
-            def scan_fn(y, i):
-                y_next = self.step_Dealiased_SETDRK4_forced(y, noise_advective[i], noise_forcing[i])
+            def scan_fn(y, noise):
+                y_next = self.step_Dealiased_SETDRK4_forced(y, noise[0], noise[1])
                 return y_next, y_next
         else:
             raise ValueError(f"Method {self.params.method} not recognised")
         
-        u_out = jax.lax.scan(scan_fn, initial_state, jnp.arange(n_steps))
+        u_out = jax.lax.scan(scan_fn, initial_state, (noise_advective, noise_forcing))
 
         return u_out
     
@@ -126,7 +127,7 @@ def initial_condition(xx,yy,E,name):
     if name == 'random':
         import numpy as np
         N = xx.shape[0]
-        ans = 0.1 * (np.random.randn(N, N) + 1j * jnp.random.randn(N, N))
+        ans = 0.1 * (np.random.randn(N, N) + 1j * np.random.randn(N, N))
     elif name == 'zero':
         ans = jnp.zeros_like(xx) + 1j * jnp.zeros_like(yy)
     elif name == 'chebfun':
@@ -184,8 +185,8 @@ def SETDRK4(u, E, E_2, Q, f1, f2, f3, beta, basis, dt, dW, dB):
         """ Nonlinear part: N(psi) = - (1 + i*beta) * |psi|^2 * psi + noise """
         psi =  jnp.fft.ifftn(in_field)# real space (complex)
         b = - (1 + 1j * beta) * jnp.abs(psi)**2 * (psi) 
-        b = b + jnp.einsum('...ijk,...i->...jk', basis, dW )*1
-        b = b + jnp.einsum('...ijk,...i->...jk', basis, dB )*1
+        b = b + jnp.einsum('...ijk,...i->...jk', basis, dW)
+        b = b + jnp.einsum('...ijk,...i->...jk', basis, dB)
         return jnp.fft.fftn( b ) # back to fourier space (complex)
     v = jnp.fft.fftn(u)
     Nv = N(v,beta,basis,dt,dW,dB) #  N takes fourier -> physical space -> nonlinarity -> fourier
