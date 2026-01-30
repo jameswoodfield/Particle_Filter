@@ -4,8 +4,9 @@ import jax
 import jax.numpy as jnp
 from .resampling import resamplers
 
-# Just a test of a very basic filter
+
 class ParticleFilter:
+    """ Simple implementation of the Bootstrap Particle Filter."""
 
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
         self.n_particles = n_particles # number of particles in the ensemble
@@ -14,7 +15,7 @@ class ParticleFilter:
         self.fwd_model = forward_model # forward model for the ensemble
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
-        self.resample = resamplers[resampling]
+        self.resample = resamplers[resampling] # resampling method
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
 
     def advance_signal(self, signal_position, key):
@@ -28,7 +29,6 @@ class ParticleFilter:
     def observation_from_signal(self, signal, key):
         key, subkey = jax.random.split(key)
         observed = signal + self.sigma * jax.random.normal(subkey, shape=signal.shape)
-        # observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
         observation = jnp.zeros_like(signal)
         observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
         return observation
@@ -46,7 +46,6 @@ class ParticleFilter:
         signal = self.advance_signal(signal, sig_key)
         particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal, obs_key)
-
         particles = self.update(particles, observation, sampling_key)
         return particles, signal, observation
 
@@ -63,7 +62,7 @@ class ParticleFilter:
     
 
 class ParticleFilter_Sequential:
-    """ this differs from the above in that resampling is done conditionally on the ess,
+    """This differs from the above in that resampling is done conditionally on the ess,
     based on sequential likelihood update of the weights."""
     def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold,resampling: str = "default", observation_locations=None, Driving_Noise=None):
         self.n_particles = n_particles
@@ -76,14 +75,17 @@ class ParticleFilter_Sequential:
         self.resample = resamplers[resampling]
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
         self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
-        self.Driving_Noise = Driving_Noise  # This is the noise that is added to the particles in the forward model, if any.
+        self.Driving_Noise = Driving_Noise # driving noise for the forward model ensemble
     
     def advance_signal(self, signal_position, key):
+        # Abstract base class ensures models have a run method
         signal, _ = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
 
     def predict(self, particles, key):
-        prediction, _ = self.fwd_model.run(particles, self.n_steps, self.Driving_Noise, key)#None is the model noise that could be an input.
+        # self.Driving_Noise could be None or an array of random numbers for the model noise.
+        # if none then the model draws noise internally using a key
+        prediction, _ = self.fwd_model.run(particles, self.n_steps, self.Driving_Noise, key) #None is the model noise that could be an input.
         return prediction
 
     def observation_from_signal(self, signal, key):
@@ -94,8 +96,7 @@ class ParticleFilter_Sequential:
         return observation
 
     def update(self, particles, weights, observation, key):
-        """resampling is done conditionally on the ess,
-        based on sequential likelihood update of the weights."""
+        """resampling is done conditionally on the ess, based on sequential likelihood update of the weights."""
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
@@ -108,7 +109,6 @@ class ParticleFilter_Sequential:
                     lambda particles: particles,
                     particles
                 )
-
         return particles, weights
 
     def run_step(self, particles, weights, signal, key):
@@ -116,7 +116,6 @@ class ParticleFilter_Sequential:
         signal = self.advance_signal(signal, sig_key)
         particles = self.predict(particles, pred_key)
         observation = self.observation_from_signal(signal, obs_key)
-
         particles,weights = self.update(particles, weights, observation, sampling_key)
         return particles, weights, signal, observation
 
@@ -284,7 +283,7 @@ class ParticleFilterTJ:
 # this class also outputs the solution when data is not available. 
 class ParticleFilterAll:
 
-    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None):
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, resampling: str = "default", observation_locations=None, Driving_Noise=None):
         self.n_particles = n_particles
         self.n_steps = n_steps # no of steps of numerical model in between DA steps
         self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
@@ -292,9 +291,10 @@ class ParticleFilterAll:
         self.signal_model = signal_model # forward model for the signal
         self.sigma = sigma # observation error standard deviation
         self.resample = resamplers[resampling]
-        
         self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
-
+        self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
+        self.Driving_Noise = Driving_Noise # driving noise for the forward model ensemble
+    
     def advance_signal(self, signal_position,key):
         _, signal = self.signal_model.run(signal_position, self.n_steps, None, key)
         return signal
@@ -346,6 +346,83 @@ class ParticleFilterAll:
     
 
 
+
+
+class ParticleFilterAll_Sequential:
+
+    def __init__(self, n_particles, n_steps, n_dim, forward_model, signal_model, sigma, ess_threshold, resampling: str = "default", observation_locations=None, Driving_Noise=None):
+        self.n_particles = n_particles
+        self.n_steps = n_steps # no of steps of numerical model in between DA steps
+        self.n_dim = n_dim # dimension of the state space (usually no of discretized grid points)
+        self.fwd_model = forward_model # forward model for the ensemble
+        self.signal_model = signal_model # forward model for the signal
+        self.sigma = sigma # observation error standard deviation
+        self.ess_threshold = ess_threshold # threshold for the effective sample size
+        self.resample = resamplers[resampling]
+        self.observation_locations = slice(observation_locations) if observation_locations is None else tuple(observation_locations)
+        self.weights = jnp.ones((n_particles,)) / n_particles  # Initialize weights uniformly
+        self.Driving_Noise = Driving_Noise # driving noise for the forward model ensemble
+    
+    def advance_signal(self, signal_position,key):
+        _, signal = self.signal_model.run(signal_position, self.n_steps, None, key)
+        return signal
+
+    def predict(self, particles, key):
+        _, prediction = self.fwd_model.run(particles, self.n_steps, None, key)
+        return prediction
+
+    def observation_from_signal(self, signal, key):
+        observed = signal + self.sigma * jax.random.normal(key, shape=signal.shape)
+        observation = jnp.zeros_like(signal)
+        print(self.observation_locations)
+        observation = observation.at[..., self.observation_locations].set(observed[..., self.observation_locations])
+        return observation
+    
+    def update(self, particles, weights, observation, key):
+        """resampling is done conditionally on the ess, based on sequential likelihood update of the weights."""
+        particles_observed = jnp.zeros_like(particles)
+        particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
+        # the zero masking of non observed locations for both particles and observations.
+        #step 1: compute likelihoods
+        def get_log_weight(particle, observation, sigma):
+            return -0.5*jnp.sum((particle.flatten()-observation.flatten())**2)/sigma**2
+        v_get_log_weight = jax.jit(jax.vmap(get_log_weight, in_axes=(0, None, None)))
+        log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
+        likelyhood = jnp.exp(log_weights)
+        weights = weights * likelyhood
+        weights = weights / jnp.sum(weights) 
+        def get_rel_ess_from_normalized_weights(weights):
+            return 1.0 / (jnp.sum(weights**2) * weights.shape[0])
+        ess = get_rel_ess_from_normalized_weights(weights)
+        particles = jax.lax.cond(
+                    ess < self.ess_threshold,
+                    lambda particles: self.resample(particles, weights, key),
+                    lambda particles: particles,
+                    particles
+                )
+        return particles, weights
+
+    def run_step(self, particles, weights, signal, key):
+        key, obs_key, sampling_key, sig_key, pred_key = jax.random.split(key, 5)
+        signal = self.advance_signal(signal, sig_key)
+        particles = self.predict(particles, pred_key)
+        observation = self.observation_from_signal(signal[-1,:,:], obs_key)
+        updated_particles, updated_weights = self.update(particles[-1,:,:], weights[:], observation, sampling_key)
+        particles = particles.at[-1].set(updated_particles)
+        weights = weights.at[:].set(updated_weights)
+        return particles, weights, signal, observation
+
+    def run(self, initial_particles, initial_weights, initial_signal, n_total, key):
+        def scan_fn(val, i):
+            particles, weights, signal, key = val
+            key, next_key = jax.random.split(key)
+            particles, weights, signal, observation = self.run_step(particles[-1,:,:], weights[:], signal[-1,:,:], key)
+            return (particles[-1,:,:][None,...],weights[:], signal[-1,:,:][None,...], next_key), (particles, weights, signal, observation)
+        
+        final, all = jax.lax.scan(scan_fn, (initial_particles, initial_weights, initial_signal, key), jnp.arange(n_total))
+        return final, all
+    
+    
 
 
 
@@ -949,13 +1026,13 @@ def get_rel_ess(log_weights):
     """Returns the relative effective sample size of the weights.
     """
     weights = jax.nn.softmax(log_weights)
-    return 1./jnp.sum(weights**2)/weights.shape[0]
+    return 1.0/(jnp.sum(weights**2)*weights.shape[0])
 
 @jax.jit
 def get_rel_ess_from_normalized_weights(weights):
     """Returns the relative effective sample size of the weights.
     """
-    return 1./jnp.sum(weights**2)/weights.shape[0]
+    return 1.0 / (jnp.sum(weights**2) * weights.shape[0])
 
 def pick_sample(fields, sample_idxs):
     """Picks a sample from the particle filter.
@@ -1283,14 +1360,3 @@ class Hybrid_composed_ParticleFilter_of_EnKF:
         
         final, all = jax.lax.scan(scan_fn, (initial_particles,initial_weights, initial_signal, key), jnp.arange(n_total))
         return final, all
-    
-
-
-
-    
-
-
-
-
-
-

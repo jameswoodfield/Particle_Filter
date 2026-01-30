@@ -108,3 +108,6 @@ def test_derived_params():
     assert d_params["L"] == 1.0
     assert d_params["Nt"] == 100
     assert d_params["dx"] == 1.0 / 128
+
+if __name__ == "__main__":
+    pytest.main()

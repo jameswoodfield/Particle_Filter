@@ -30,7 +30,8 @@ class MHD_SETD_KT_CM_JAX(BaseModel):
         self.Lhat = (-1) * (self.ksq) * self.params.mu + (-1) * (self.ksq)**2 * self.params.nu 
         self.E_1, self.E_2, self.Q, self.f1, self.f2, self.f3 = Kassam_Trefethen(self.params.dt, self.Lhat, self.params.nx)
 
-        self.psi0 = initial_condition(self.xx,self.yy,self.params.E,self.params.initial_condition)
+        self.q0 = initial_condition(self.xx,self.yy,self.params.E,self.params.initial_condition_q)
+        self.A0 = initial_condition(self.xx,self.yy,self.params.E,self.params.initial_condition_a)
 
         self.basis_1 = self.params["noise_magnitude_1"]*stochastic_basis_specifier(self.xx, self.yy, self.params.S_1, self.params.SALT_basis_name)
         self.basis_2 = self.params["noise_magnitude_2"]*stochastic_basis_specifier(self.xx, self.yy, self.params.S_2, self.params.SFLT_basis_name)
@@ -50,7 +51,7 @@ class MHD_SETD_KT_CM_JAX(BaseModel):
         pass
     
     def print_timestepping_methods(self):
-        available_methods = ['Dealiased_SETDRK4']
+        available_methods = ['Dealiased_SETDRK4', 'Dealiased_SETDRK4_forced']
         print(available_methods)
         return available_methods
         
@@ -61,8 +62,10 @@ class MHD_SETD_KT_CM_JAX(BaseModel):
         return dW, dB, dZ
     
     def step_Dealiased_SETDRK4(self, initial_state, noise_salt, noise_sflt, noise_forcing):
-        u = initial_state
-        u = SETDRK4(u,
+        q, a = initial_state
+        #q, A, kx, ky, mask, E, E_2, Q, f1, f2, f3, basis_1, basis_2, basis_3, dt, dW, dB, dZ
+        q,a = SETDRK4(q,
+                    a,
                     self.kx, 
                     self.ky,
                     self.mask,
@@ -79,7 +82,8 @@ class MHD_SETD_KT_CM_JAX(BaseModel):
                     noise_salt,
                     noise_sflt,
                     noise_forcing)
-        return u
+        final_state = (q,a)
+        return final_state
     ###########################
     ##    Running options    ##
     ###########################
@@ -94,7 +98,7 @@ class MHD_SETD_KT_CM_JAX(BaseModel):
         self.validate_params()
         self.timestep_validatate()    
 
-        if self.params.method == 'Dealiased_SETDRK4':
+        if self.params.method in ('Dealiased_SETDRK4', 'Dealiased_SETDRK4_forced'):
             def scan_fn(y, i):
                 y_next = self.step_Dealiased_SETDRK4(y, noise_salt[i], noise_sflt[i],noise_forcing[i])
                 return y_next, y_next
@@ -113,7 +117,7 @@ class MHD_SETD_KT_CM_JAX(BaseModel):
             noise_salt, noise_sflt, noise_forcing = noise,noise,noise
         self.validate_params()
         self.timestep_validatate()  
-        if self.params.method == 'Dealiased_SETDRK4':
+        if self.params.method in ('Dealiased_SETDRK4', 'Dealiased_SETDRK4_forced'):
             def scan_fn(y, i):
                 y_next = self.step_Dealiased_SETDRK4(y, noise_salt[i], noise_sflt[i],noise_forcing[i])
                 return y_next, None
@@ -165,6 +169,14 @@ def initial_condition(xx,yy,E,name):
         ans = 1/4*(2*jnp.cos(4*jnp.pi*xx*2) + jnp.cos(4*jnp.pi*yy))
     elif name == 'sinsin':
         ans = jnp.sin(2 * jnp.pi * xx ) * jnp.sin(2 * jnp.pi * yy ) + 1.5 * jnp.sin(4 * jnp.pi * xx ) * jnp.sin(4 * jnp.pi * yy ) 
+    elif name == 'friedel_q':
+        ans = -jnp.cos((xx + 1.4)) - jnp.cos((yy + 2.0))
+    elif name== 'friedel_a':
+        ans = 1/3*( jnp.cos((xx + 2.3)) + jnp.cos((yy + 6.2)) )
+    elif name=='orzag_modified_q':#Bizkamp and Welter 198
+        ans = -4*jnp.pi**2*(jnp.cos(2*jnp.pi*xx)+jnp.cos(2*jnp.pi*yy))#-8*jnp.pi**2*
+    elif name=='orzag_modified_a':
+        ans = 1/2*jnp.cos(4*jnp.pi*yy)+jnp.cos(2*jnp.pi*xx)
     else:
         raise ValueError(f"Initial condition {name} not recognised")
     ic = jnp.tile(ans, (E, 1, 1))
@@ -225,7 +237,7 @@ def SETDRK4(q, A, kx, ky, mask, E, E_2, Q, f1, f2, f3, basis_1, basis_2, basis_3
         denom = kx**2 + ky**2
         safe_denom = jnp.where(denom == 0, 1.0, denom)
         psi_hat = q_hat / safe_denom 
-        psi_hat = psi_hat.at[0,0].set(0.0)  
+        psi_hat = psi_hat.at[..., 0, 0].set(0.0)  
         return psi_hat * mask  
     
     def solve_j_hat_from_A_hat(A_hat,kx,ky,mask):
@@ -246,48 +258,34 @@ def SETDRK4(q, A, kx, ky, mask, E, E_2, Q, f1, f2, f3, basis_1, basis_2, basis_3
         b = -1j * ( kx * flux_x_hat + ky * flux_y_hat )
         return b
     
-    def N_RHS(q_hat,psi_hat,A_hat,j_hat,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat):
-        """ Nonlinear part: N_1 = -J(psi,q) + J(A,j), in addition to N_2 = J() """
-        J1 = J(psi_hat +  rvf1 , q_hat,kx,ky,mask)# salt on the psi. 
-        J2 = J(A_hat , j_hat,kx,ky,mask)
-        #b = -J1 + J2 + rvf3_hat*0.01
-        return b
+    def N_RHS(q_hat,psi_hat,A_hat,j_hat,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat,dt):
+        """ Nonlinear part: N_1 = -J(psi,q) + J(A,j), in addition to """
+        J1 = J(psi_hat+rvf1_hat, q_hat,kx,ky,mask)# salt on the psi. 
+        J2 = J(A_hat, j_hat,kx,ky,mask)
+        J3 = J(psi_hat+rvf1_hat, A_hat,kx,ky,mask)
+        rhs1 = -J1 + J2 #+ rvf3_hat*0.01
+        rhs2 = -J3 #+ rvf2_hat*500
+        return rhs1*dt, rhs2*dt
 
-    def N(q_hat,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat):
-        """ Nonlinear part: N(q) = div(u q)= (uq)_x+(vq)_y  """
-        denom = kx**2 + ky**2
-        safe_denom = jnp.where(denom == 0, 1.0, denom)
-        psi_hat = q_hat / safe_denom 
-        psi_hat = psi_hat.at[0,0].set(0.0)
-        psi_hat = psi_hat + rvf1_hat # SALT
-
-        u_hat =  1j * ky * (psi_hat) * mask
-        v_hat = -1j * kx * (psi_hat) * mask
-
-        u = jnp.fft.ifftn(u_hat,axes=(-1,-2)) 
-        v = jnp.fft.ifftn(v_hat,axes=(-1,-2)) 
-        q = jnp.fft.ifftn(q_hat+rvf2_hat*500, axes=(-1,-2)) #SFLT 
-
-        flux_x_hat = jnp.fft.fftn(u*q,axes=(-1,-2)) * mask
-        flux_y_hat = jnp.fft.fftn(v*q,axes=(-1,-2)) * mask
-        b = -1j * ( kx * flux_x_hat + ky * flux_y_hat ) + rvf3_hat*0.01
-        return b 
     
     qhat = jnp.fft.fftn(q,axes=(-1,-2))# go to Fourier space
     Ahat = jnp.fft.fftn(A,axes=(-1,-2))# go to Fourier space
+    Jhat = solve_j_hat_from_A_hat(Ahat,kx,ky,mask)
+    Psihat = Solve_psi_hat_from_q_hat(qhat,kx,ky,mask)
+    v = (qhat,Ahat)
+    Nv1_hat, Nv2_hat = N_RHS(qhat,Psihat,Ahat,Jhat,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat,dt)
+    a_1,a_2 = E_2 * qhat + Q * Nv1_hat , E_2 * Ahat + Q * Nv2_hat
+    Na1_hat, Na2_hat = N_RHS(a_1,Solve_psi_hat_from_q_hat(a_1,kx,ky,mask),a_2,solve_j_hat_from_A_hat(a_2,kx,ky,mask),kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat,dt)
+    b_1,b_2 = E_2 * qhat + Q * Na1_hat , E_2 * Ahat + Q * Na2_hat
+    Nb1_hat, Nb2_hat = N_RHS(b_1,Solve_psi_hat_from_q_hat(b_1,kx,ky,mask),b_2,solve_j_hat_from_A_hat(b_2,kx,ky,mask),kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat,dt)
+    c_1,c_2 = E_2 * a_1 + Q * (2 * Nb1_hat - Nv1_hat) , E_2 * a_2 + Q * (2 * Nb2_hat - Nv2_hat)
+    Nc1_hat, Nc2_hat = N_RHS(c_1,Solve_psi_hat_from_q_hat(c_1,kx,ky,mask),c_2,solve_j_hat_from_A_hat(c_2,kx,ky,mask),kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat,dt)
+    qhat_next = E * qhat + Nv1_hat * f1 + (Na1_hat + Nb1_hat) * f2 + Nc1_hat * f3
+    Ahat_next = E * Ahat + Nv2_hat * f1 + (Na2_hat + Nb2_hat) * f2 + Nc2_hat * f3
+    q_next = jnp.fft.ifftn( qhat_next,axes=(-1,-2)) # back to real space
+    A_next = jnp.fft.ifftn( Ahat_next,axes=(-1,-2)) # back to real space
+    return jnp.real(q_next), jnp.real(A_next)
 
-
-
-    Nv = N(v,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat)
-    a = E_2 * v + Q * Nv
-    Na = N(a,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat)
-    b = E_2 * v + Q * Na
-    Nb = N(b,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat)
-    c = E_2 * a + Q * (2 * Nb - Nv)
-    Nc = N(c,kx,ky,mask,rvf1_hat,rvf2_hat,rvf3_hat)
-    v_next = E * v + Nv * f1 + (Na + Nb) * f2 + Nc * f3
-    u_next = jnp.fft.ifftn( v_next,axes=(-1,-2)) # back to real space
-    return jnp.real(u_next)
 
 
 
@@ -299,105 +297,54 @@ def dealias_mask(kx, ky,cutoff=2/3):
     return mask
 
 
-MHD_params = {# Heat equation. 
+MHD_params = {
     "equation_name": 'MHD',  
-    "nx": int(128*4),        # Grid size
+    "nx": int(64*2),        # Grid size
     "xmin": 0.0,     # Minimum x-coordinate
     "xmax": 1.0,     # Maximum x-coordinate
-    "dt": 0.01,       # Time step, too large from the theoretical perspective.
-    "tmax": 80,    # Final time
-    "mu": 0.00000,       # diffusion parameter
+    "dt": 0.001,       # Time step, .
+    "tmax": 10.0,    # Final time 2.7 blow up
+    "mu": 0.000000,       # diffusion parameter
     "nu": 0.00000000001, #(1/nx)**4      # hyperdiffusion parameter
     "S_1": 1,
     "S_2": 1,
     "S_3": 1,
     "E": 1,
-    "nt": int(80/0.01),
+    "nt": int(10.0/0.001),
     "noise_magnitude_1": 0.0, #0.0001 # salt noise magnitude
     "noise_magnitude_2": 0.0, #0.0001, # forcing noise magnitude
     "noise_magnitude_3": 0.0,#0.1, # sflt noise magnitude
     "SALT_basis_name": 'sin_sin',#'sin_sin',
     "SFLT_basis_name": 'sin_sin',#'sin_sin',
     "Forcing_basis_name": 'sin_sin',#'sin_sin',
-    "initial_condition": 'smoz',  # Initial condition type specified by chebfuns example
+    "initial_condition_q": 'orzag_modified_q',  # Initial condition type specified by chebfuns example
+    "initial_condition_a": 'orzag_modified_a',  # Initial condition type specified by chebfuns example
     "method": 'Dealiased_SETDRK4_forced',  # Time-stepping method
 }
-
-MHD_params_salt = {# Heat equation. 
+S_MHD_params = {
     "equation_name": 'MHD',  
-    "nx": int(128*4),        # Grid size
+    "nx": int(128),        # Grid size
     "xmin": 0.0,     # Minimum x-coordinate
     "xmax": 1.0,     # Maximum x-coordinate
-    "dt": 0.01,       # Time step, too large from the theoretical perspective.
-    "tmax": 80,    # Final time
-    "mu": 0.00000,       # diffusion parameter
+    "dt": 0.1,       # Time step, .
+    "tmax": 8000,    # Final time
+    "mu": 0.000001,       # diffusion parameter
     "nu": 0.00000000001, #(1/nx)**4      # hyperdiffusion parameter
-    "S_1": 9,
+    "S_1": 1,
     "S_2": 1,
     "S_3": 1,
     "E": 1,
-    "nt": int(80/0.01),
+    "nt": int(8000/0.1),
     "noise_magnitude_1": 0.0001, #0.0001 # salt noise magnitude
-    "noise_magnitude_2": 0.0, #0.0001, # forcing noise magnitude
-    "noise_magnitude_3": 0.0,#0.1, # sflt noise magnitude
+    "noise_magnitude_2": 0.0,
+    "noise_magnitude_3": 0.0,
     "SALT_basis_name": 'sin_sin',#'sin_sin',
     "SFLT_basis_name": 'sin_sin',#'sin_sin',
     "Forcing_basis_name": 'sin_sin',#'sin_sin',
-    "initial_condition": 'smoz',  # Initial condition type specified by chebfuns example
+    "initial_condition_q": 'friedel_q',  # Initial condition type specified by chebfuns example
+    "initial_condition_a": 'friedel_a',  # Initial condition type specified by chebfuns example
     "method": 'Dealiased_SETDRK4_forced',  # Time-stepping method
 }
-
-MHD_params_sflt = {# Heat equation. 
-    "equation_name": 'MHD',  
-    "nx": int(128*4),        # Grid size
-    "xmin": 0.0,     # Minimum x-coordinate
-    "xmax": 1.0,     # Maximum x-coordinate
-    "dt": 0.01,       # Time step, too large from the theoretical perspective.
-    "tmax": 80,    # Final time
-    "mu": 0.00000,       # diffusion parameter
-    "nu": 0.00000000001, #(1/nx)**4      # hyperdiffusion parameter
-    "S_1": 1,
-    "S_2": 9,
-    "S_3": 1,
-    "E": 1,
-    "nt": int(80/0.01),
-    "noise_magnitude_1": 0.0, #0.0001 # salt noise magnitude
-    "noise_magnitude_2": 0.0001,#0.0, #0.0001, # forcing noise magnitude
-    "noise_magnitude_3": 0.0,#0.1, # sflt noise magnitude
-    "SALT_basis_name": 'sin_sin',#'sin_sin',
-    "SFLT_basis_name": 'sin_sin',#'sin_sin',
-    "Forcing_basis_name": 'sin_sin',#'sin_sin',
-    "initial_condition": 'smoz',  # Initial condition type specified by chebfuns example
-    "method": 'Dealiased_SETDRK4_forced',  # Time-stepping method
-}
-
-MHD_params_additive = {# Heat equation. 
-    "equation_name": 'MHD',  
-    "nx": int(128*4),        # Grid size
-    "xmin": 0.0,     # Minimum x-coordinate
-    "xmax": 1.0,     # Maximum x-coordinate
-    "dt": 0.01,       # Time step, too large from the theoretical perspective.
-    "tmax": 80,    # Final time
-    "mu": 0.00000,       # diffusion parameter
-    "nu": 0.00000000001, #(1/nx)**4      # hyperdiffusion parameter
-    "S_1": 1,
-    "S_2": 1,
-    "S_3": 9,
-    "E": 1,
-    "nt": int(80/0.01),
-    "noise_magnitude_1": 0.0, #0.0001 # salt noise magnitude
-    "noise_magnitude_2": 0.0, #0.0001, # forcing noise magnitude
-    "noise_magnitude_3": 0.0001,#0.1, # sflt noise magnitude
-    "SALT_basis_name": 'sin_sin',#'sin_sin',
-    "SFLT_basis_name": 'sin_sin',#'sin_sin',
-    "Forcing_basis_name": 'sin_sin',#'sin_sin',
-    "initial_condition": 'smoz',  # Initial condition type specified by chebfuns example
-    "method": 'Dealiased_SETDRK4_forced',  # Time-stepping method
-}
-
-
-
-
 
 
 
@@ -409,7 +356,8 @@ def derived_params(params):
 
 def main():
     import numpy as np
-    # --- Parameters chosen to match chebfun example---
+    from matplotlib.animation import FuncAnimation
+
     params = ConfigDict(MHD_params)
     signal_model = MHD_SETD_KT_CM_JAX(params) 
     xmin, xmax, nx, S_1,S_2,S_3, E, tmax, dt, mu = signal_model.params["xmin"],signal_model.params["xmax"],signal_model.params["nt"],signal_model.params["S_1"],signal_model.params["S_2"],signal_model.params["S_3"],signal_model.params["E"],signal_model.params["tmax"],signal_model.params["dt"],signal_model.params["mu"]
@@ -424,7 +372,8 @@ def main():
     basis_2 = signal_model.basis_2
     basis_3 = signal_model.basis_3
 
-    q_ic = initial_condition(xx,yy,E,name=params['initial_condition']) # this is the initial condition, which is a complex array of shape (E,nx,nx)
+    q_ic = initial_condition(xx,yy,E,name='orzag_modified_q')#*0 
+    A_ic = initial_condition(xx,yy,E,name='orzag_modified_a')#*0.000001# this gives vortex sheets and blow up as expected.
     # Plot the basis functions
     num_to_plot = min(9, basis_1.shape[0])  # Plot at most 9 basis functions
     fig, axs = plt.subplots(3, 3, figsize=(10, 10))
@@ -438,35 +387,33 @@ def main():
     plt.show()
 
     dWs = np.random.randn(Nt, basis_1.shape[0])* jnp.sqrt(dt)/dt 
-    output = signal_model.run_2(initial_state=signal_model.psi0, n_steps=signal_model.params['Nt'], noise=None, key=jax.random.PRNGKey(0), save_every=16)
+    output = signal_model.run_2(initial_state=(q_ic, A_ic), n_steps=signal_model.params['Nt'], noise=None, key=jax.random.PRNGKey(0), save_every=1)
+    (A0, B0), (A_hist, B_hist) = output
 
-    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-    times_to_plot = [0, signal_model.params['Nt'] // 3, 2 * signal_model.params['Nt'] // 3, signal_model.params['Nt'] - 1]
-    for i, time_idx in enumerate(times_to_plot):
-        ax = axs.flat[i]
-        im = ax.imshow(jnp.real(output[1][time_idx, 0]), extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="seismic", aspect='equal')
-        ax.set_title(f"Time step {time_idx} (Ensemble 1)")
-        fig.colorbar(im, ax=ax, shrink=0.7)
-    plt.tight_layout()
+    # Convert JAX -> NumPy, drop the singleton channel axis (1 ensemble member)
+    framesA = np.asarray(A_hist)[:, 0, :, :]   # (T, 128, 128)
+    framesB = np.asarray(B_hist)[:, 0, :, :]   # (T, 128, 128)
+    T = framesA.shape[0]
+    print(T)
+    fig, ax = plt.subplots()
+    ax.set_title("A(t)")
+    # Fix color scale across time (usually what you want)
+    vmin = framesA.min()
+    vmax = framesA.max()
+    for i in range(T):
+        if i % 10 == 0:
+            plt.clf()
+            plt.imshow(framesA[i], extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="RdBu", aspect='equal')
+            plt.pause(0.001)
+            plt.draw()
     plt.show()
-
-    from matplotlib.animation import FuncAnimation
-    fig, ax = plt.subplots(figsize=(6, 6))
-    im = ax.imshow(jnp.real(output[1][0, 0]), extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="seismic", aspect='equal')
-    ax.set_title("Time Evolution (Ensemble 1)")
-    fig.colorbar(im, ax=ax, shrink=0.7)
-    subsample_rate = 1  # Adjust this value to control the speed of the animation
-    subsampled_frames = jnp.arange(0, signal_model.params['Nt'], subsample_rate)
-
-    def update(frame_idx):
-        frame = subsampled_frames[frame_idx]
-        im.set_data(jnp.real(output[1][frame, 0]))
-        ax.set_title(f"Time step {frame} (Ensemble 1)")
-        return im,
-
-    anim = FuncAnimation(fig, update, frames=len(subsampled_frames), interval=50, blit=True)
+    for i in range(T):
+        if i % 10 == 0:
+            plt.clf()
+            plt.imshow(framesB[i], extent=[xmin, xmax, xmin, xmax], origin="lower", cmap="PuRd", aspect='equal')
+            plt.pause(0.001)
+            plt.draw()
     plt.show()
     
 if __name__ == "__main__":
     main()
-    

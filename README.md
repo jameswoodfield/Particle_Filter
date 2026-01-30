@@ -8,6 +8,14 @@ This repository serves as a flexible platform for testing time-stepping schemes,
 | ------------- | ------------- |
 | <img src="Saving/Cropped_KS.png" alt="drawing" width="200"/>  | <img src="Saving/Cropped_KdV.png" alt="drawing" width="200"/>  |
 
+
+|Stochastic Navier-Stokes|
+![Det](Saving/NS/Det.png)
+![SFLT](Saving/NS/SFLT.png)
+
+
+
+
 ## [📘 See Detailed Examples →](EXAMPLES.md)
 
 
@@ -52,6 +60,9 @@ etd-data-assimilation/
 │   └── resampling.py # some resampling algorithms for pf. 
 ├── models/ # forward and ensemble models 
 │  ├── ETD_KT_CM_JAX_Vecotrised.py # Dynamical systems (e.g. KS, KdV, SPDEs)
+│  ├── NS.py # Stochastic Navier stokes equation
+│  ├── QG.py # Stochastic quasi-geostrophic equation
+│  ├── S_MHD.py # Stochastic magneto-hydrodynamics (2D incompressible).
 │  └── CGLE.py # Complex valued Ginzburg Landau equation
 ├── tests/             # unit tests
 ├── Saving/            # Images from examples
