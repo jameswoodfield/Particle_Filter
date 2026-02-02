@@ -3,7 +3,6 @@ os.environ["JAX_ENABLE_X64"] = "true"
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-import os
 try:
     from .base import BaseModel
 except ImportError:
@@ -16,7 +15,7 @@ from ml_collections import ConfigDict
 class CGLE_SETD_KT_CM_JAX(BaseModel):
     def __init__(self, params):
         self.params = params
-        self.timestep_validatate()
+        self.timestep_validate()
         self.derived_params = derived_params(params)
         self.params.L = self.derived_params["L"]
         self.params.Nt = self.derived_params["Nt"]
@@ -37,7 +36,7 @@ class CGLE_SETD_KT_CM_JAX(BaseModel):
         self.basis = self.params["noise_magnitude"]*stochastic_basis_specifier(self.xx, self.yy, self.params.S, self.params.Forcing_basis_name)
 
 
-    def timestep_validatate(self):
+    def timestep_validate(self):
         if self.params.dt <= 0:
             raise ValueError(f"Time step dt must be positive, got {self.params.dt}")
         if self.params.nt * self.params.dt != self.params.tmax :
@@ -91,7 +90,7 @@ class CGLE_SETD_KT_CM_JAX(BaseModel):
             noise_advective, noise_forcing = noise[0], noise[1]
 
         self.validate_params()
-        self.timestep_validatate()    
+        self.timestep_validate()    
         ###SETDRK###
         if self.params.method == 'Dealiased_SETDRK4_forced':
             def scan_fn(y, noise):
@@ -111,7 +110,7 @@ class CGLE_SETD_KT_CM_JAX(BaseModel):
         else:
             noise_advective, noise_forcing = noise,noise
         self.validate_params()
-        self.timestep_validatate()  
+        self.timestep_validate()  
         ###SETDRK###
         if self.params.method == 'Dealiased_SETDRK4_forced':
             def scan_fn(y, i):

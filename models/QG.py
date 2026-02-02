@@ -35,7 +35,7 @@ class QG_SETD_KT_CM_JAX(BaseModel):
 
         self.mask = dealias_mask(self.kx, self.ky,cutoff=2/3)
 
-    def timestep_validatate(self):
+    def timestep_validate(self):
         if self.params.dt <= 0:
             raise ValueError(f"Time step dt must be positive, got {self.params.dt}")
         if self.params.nt * self.params.dt != self.params.tmax :
@@ -93,7 +93,7 @@ class QG_SETD_KT_CM_JAX(BaseModel):
             noise_salt, noise_sflt, noise_forcing = noise, noise, noise# this assumes only one is selected.
 
         self.validate_params()
-        self.timestep_validatate()    
+        self.timestep_validate()    
 
         if self.params.method == 'Dealiased_SETDRK4':
             def scan_fn(y, i):
@@ -113,7 +113,7 @@ class QG_SETD_KT_CM_JAX(BaseModel):
         else:
             noise_salt, noise_sflt, noise_forcing = noise,noise,noise
         self.validate_params()
-        self.timestep_validatate()  
+        self.timestep_validate()  
         if self.params.method == 'Dealiased_SETDRK4':
             def scan_fn(y, i):
                 y_next = self.step_Dealiased_SETDRK4(y, noise_salt[i], noise_sflt[i], noise_forcing[i])
@@ -132,7 +132,7 @@ class QG_SETD_KT_CM_JAX(BaseModel):
             noise_salt, noise_sflt, noise_forcing = noise, noise, noise
 
         self.validate_params()
-        self.timestep_validatate()    
+        self.timestep_validate()    
 
         def k_steps(state, noise_chunk):
             def step_fn(s, inputs):

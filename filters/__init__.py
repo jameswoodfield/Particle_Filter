@@ -1,1 +1,1 @@
-from filters.resampling import resamplers
+from .resampling import resamplers
