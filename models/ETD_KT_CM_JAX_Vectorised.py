@@ -52,7 +52,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
         self.A1, self.A2, self.B1, self.B2, self.B3, self.E1, self.E2, self.E3, self.E4, self.E5, self.E6, self.E7 = Complex_integration_technique(self.params.dt, self.L, self.params.nx)
 
 
-    def timestep_validatate(self):
+    def timestep_validate(self):
         if self.params.dt <= 0:
             raise ValueError(f"Time step dt must be positive, got {self.params.dt}")
         if self.params.nt * self.params.dt != self.params.tmax :
@@ -306,7 +306,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             noise_advective, noise_forcing = noise, noise# this assumes only one is selected.
 
         self.validate_params()
-        self.timestep_validatate()    
+        self.timestep_validate()    
         ###SETDRK###
         if self.params.method == 'Dealiased_ETDRK4':
             def scan_fn(y, noise_tuple):
@@ -412,7 +412,7 @@ class ETD_KT_CM_JAX_Vectorised(BaseModel):
             noise_advective, noise_forcing = noise,noise
 
         self.validate_params()
-        self.timestep_validatate()    
+        self.timestep_validate()    
         ###SETDRK###
         if self.params.method == 'Dealiased_ETDRK4':
             def scan_fn(y, i):
