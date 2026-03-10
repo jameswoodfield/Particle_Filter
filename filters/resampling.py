@@ -28,7 +28,7 @@ def register_resampler(name):
 #     E,nx = particles.shape
 #     observations, out = observation(data,particles,sigma)
 #     distance = jnp.linalg.norm(out, ord=2,axis=1)
-#     weights = weights*jnp.exp(-distance / sigma) #  exp(log(weights)*temperature)) # prior*likelyhood, normalised.
+#     weights = weights*jnp.exp(-distance / sigma) #  exp(log(weights)*temperature)) # prior*likelihood, normalised.
 #     weights += 1.e-16     # avoid round-off to zero
 #     _weights = weights/jnp.sum(weights) # normalize
 #     return _weights
