@@ -42,14 +42,16 @@ def test_shape_and_determinism(x, E, name):
     assert jnp.allclose(ic1, ic2, rtol=1e-12, atol=1e-12), f"IC not deterministic for {name} with x={x} and E={E}"
 
 
-def test_sin_ic(x):
+def test_sin_ic():
+    x = jnp.linspace(0, 1, 64)
     E = 2
     ic = initial_condition(x, E, "sin")
     expected = jnp.sin(2 * jnp.pi * x)
     for row in ic:
         assert jnp.allclose(row, expected, rtol=1e-12, atol=1e-12)
 
-def test_gaussian_ic(x):
+def test_gaussian_ic():
+    x = jnp.linspace(0, 1, 64)
     E = 1
     ic = initial_condition(x, E, "gaussian")
     A, x0, sigma = 1, 0.5, 0.1

@@ -100,8 +100,8 @@ class ParticleFilter_Sequential:
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        likelyhood = jnp.exp(log_weights)
-        weights = weights * likelyhood
+        likelihood = jnp.exp(log_weights)
+        weights = weights * likelihood
         ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
         particles = jax.lax.cond(
                     ess < self.ess_threshold,
@@ -260,7 +260,7 @@ class ParticleFilterTJ:
         Args:
             initial_particles (_type_): _description_
             initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
+            n_total (_type_): _n_total is the number of data assimilation procedures._
         """
         all_particles = []
         all_signals = []
@@ -333,7 +333,7 @@ class ParticleFilterAll:
         Args:
             initial_particles (_type_): _description_
             initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
+            n_total (_type_): _n_total is the number of data assimilation procedures._
         """
         def scan_fn(val, i):
             particles, signal, key = val
@@ -388,8 +388,8 @@ class ParticleFilterAll_Sequential:
             return -0.5*jnp.sum((particle.flatten()-observation.flatten())**2)/sigma**2
         v_get_log_weight = jax.jit(jax.vmap(get_log_weight, in_axes=(0, None, None)))
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        likelyhood = jnp.exp(log_weights)
-        weights = weights * likelyhood
+        likelihood = jnp.exp(log_weights)
+        weights = weights * likelihood
         weights = weights / jnp.sum(weights) 
         def get_rel_ess_from_normalized_weights(weights):
             return 1.0 / (jnp.sum(weights**2) * weights.shape[0])
@@ -537,7 +537,7 @@ class ParticleFilter_tempered_jittered:
         Args:
             initial_particles (_type_): _description_
             initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
+            n_total (_type_): _n_total is the number of data assimilation procedures._
         """
         def scan_fn(val, i):
             particles, signal, key = val
@@ -953,7 +953,7 @@ class EnsembleKalmanFilter_All:
         Args:
             initial_particles (_type_): _description_
             initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
+            n_total (_type_): _n_total is the number of data assimilation procedures._
         """
         def scan_fn(val, i):
             particles, signal, key = val # get the carry, 
@@ -1233,8 +1233,8 @@ class HybridParticleFilterEnKF:
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        likelyhood = jnp.exp(log_weights)
-        weights = weights * likelyhood
+        likelihood = jnp.exp(log_weights)
+        weights = weights * likelihood
         ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
         particles = jax.lax.cond(
                     ess < self.ess_threshold, # we resample if ess below threshold and ENKF otherwise.
@@ -1324,8 +1324,8 @@ class Hybrid_composed_ParticleFilter_of_EnKF:
         particles_observed = jnp.zeros_like(particles)
         particles_observed = particles_observed.at[..., self.observation_locations].set(particles[..., self.observation_locations])
         log_weights = v_get_log_weight(particles_observed, observation, self.sigma)
-        likelyhood = jnp.exp(log_weights)
-        weights = weights * likelyhood
+        likelihood = jnp.exp(log_weights)
+        weights = weights * likelihood
         ess = get_rel_ess_from_normalized_weights(jax.nn.softmax(jnp.exp(weights)))
         particles = jax.lax.cond(
                     ess < self.ess_threshold, # we resample if ess below threshold and ENKF otherwise.
@@ -1350,7 +1350,7 @@ class Hybrid_composed_ParticleFilter_of_EnKF:
         Args:
             initial_particles (_type_): _description_
             initial_signal (_type_): _description_
-            n_total (_type_): _n_total is the number of data assimilation proceedures._
+            n_total (_type_): _n_total is the number of data assimilation procedures._
         """
         def scan_fn(val, i):
             particles, weights, signal, key = val

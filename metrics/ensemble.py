@@ -24,7 +24,7 @@ def rmse(observations, ensemble):
     Returns:
         jnp.ndarray: Sparial Mean (RMSE over member dimension) for each time step, shape (time,).
     """
-    square_error = (ensemble - observations)**2
+    square_error = (ensemble - observations[:, jnp.newaxis, :])**2
     mean_square_error = jnp.mean(square_error, axis=1)# average over ensemble members
     root_mean_square_error = jnp.sqrt(mean_square_error)
     mean_rmse_over_space = jnp.mean(root_mean_square_error, axis=1)# average over space dimension
@@ -33,7 +33,10 @@ def rmse(observations, ensemble):
 
 def bias(signal, ensemble):
     ensemble_mean = jnp.mean(ensemble, axis=1)
-    truths = signal.squeeze()
+    truths = signal
+    # ensure truths is (time, space)
+    if truths.ndim == 3:
+        truths = truths.squeeze(axis=1)
     bias = jnp.mean(ensemble_mean - truths, axis=1)
     return bias
 

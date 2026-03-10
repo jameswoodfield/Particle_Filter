@@ -55,11 +55,11 @@ This repository serves as a flexible platform for testing time-stepping schemes,
 ```bash
 etd-data-assimilation/
 ├── filters/ #Particle & Kalman filtering modules 
-│   ├── filter.py # particle and Kalman filtering for ETD_KT_CM_JAX_Vecotrised.py
+│   ├── filter.py # particle and Kalman filtering for ETD_KT_CM_JAX_Vectorised.py
 │   ├── filter_2D.py # ENKF, ETKF for 2d model CGLE.py
 │   └── resampling.py # some resampling algorithms for pf. 
 ├── models/ # forward and ensemble models 
-│  ├── ETD_KT_CM_JAX_Vecotrised.py # Dynamical systems (e.g. KS, KdV, SPDEs)
+│  ├── ETD_KT_CM_JAX_Vectorised.py # Dynamical systems (e.g. KS, KdV, SPDEs)
 │  ├── NS.py # Stochastic Navier stokes equation
 │  ├── QG.py # Stochastic quasi-geostrophic equation
 │  ├── S_MHD.py # Stochastic magneto-hydrodynamics (2D incompressible).
